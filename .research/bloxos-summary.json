@@ -1,0 +1,27 @@
+{
+  "repo": "bokiko/bloxos",
+  "sha": "fcafbb3",
+  "date": "2026-09-29",
+  "verdict": "Poor platform fit (single-process SQLite fleet monitor with no site/rack model, node lifecycle, plugins, audit or MCP), but its staged telemetry-gated rollout, two-phase enrollment and ACK-after-commit edge journal are worth re-implementing on Temporal.",
+  "patterns": [
+    {"pattern": "Withheld vs failed: typed eligibility refusals that don't consume blast-radius budget", "area": "lifecycle", "verdict": "adopt", "effort": "S", "evidence": "hub/agent_versions.go:539; hub/agent_rollout.go:84-88,517"},
+    {"pattern": "At-least-once edge telemetry: stream id + durable seq + declared gaps + ACK after commit", "area": "multi-site", "verdict": "adopt", "effort": "M", "evidence": "agent/power_journal.go:409-463; hub/power_history.go:306-315,376-520"},
+    {"pattern": "Boot-time route-to-permission coverage audit", "area": "authz", "verdict": "adopt", "effort": "S", "evidence": "hub/rbac.go:85-160,276"},
+    {"pattern": "Accepted / confirmed / unknown tri-state action outcomes", "area": "portal", "verdict": "adopt", "effort": "S", "evidence": "hub/command_feedback.go:10-30; hub/main.go:1476,597-598"},
+    {"pattern": "Health evidence bound to the current connection and receiver clock", "area": "validation", "verdict": "adopt", "effort": "S", "evidence": "hub/agent_rollout.go:622-744"},
+    {"pattern": "Staged canary rollout with durable slots and telemetry dwell gate", "area": "orchestration", "verdict": "adapt", "effort": "M", "evidence": "hub/agent_rollout.go:37-89,322-556,703,866"},
+    {"pattern": "Two-phase enrollment: issue, stage, commit, confirm", "area": "provisioning", "verdict": "adapt", "effort": "M", "evidence": "hub/agentws.go:1208-1229,1525-1578,1739; agent/credential_handoff.go:152,222"},
+    {"pattern": "Signed artifacts with persistent anti-rollback floor on the node", "area": "provisioning", "verdict": "adapt", "effort": "M", "evidence": "agent/update_verify.go:171; agent/release_floor.go:325; proto/updatesigning/signing.go:18"},
+    {"pattern": "Outbound-only agent channel with single-owner connection registry", "area": "multi-site", "verdict": "adapt", "effort": "M", "evidence": "hub/agentws.go:103,843,855,857,1116,1126"},
+    {"pattern": "Typed allowlisted node actions with fixed argv, no shell", "area": "provisioning", "verdict": "adapt", "effort": "S", "evidence": "agent/main.go:129-142; agent/command_plan.go:174; hub/main.go:1445"},
+    {"pattern": "Pinned-SPKI one-line bootstrap, non-consuming GET, uniform 404", "area": "provisioning", "verdict": "adapt", "effort": "S", "evidence": "hub/join.go:498,528,599"},
+    {"pattern": "Unprivileged control plane + root host worker via file inbox/outbox", "area": "multi-site", "verdict": "watch", "effort": "S", "evidence": "hub/system_update.go:3-7,201,315,331"},
+    {"pattern": "Shared data-minimising contract package re-sanitised on both sides", "area": "authz", "verdict": "watch", "effort": "S", "evidence": "proto/aisessions; hub/ai_sessions.go"},
+    {"pattern": "Single-process SQLite hub with coordination state in globals", "area": "multi-site", "verdict": "avoid", "effort": "-", "evidence": "hub/database.go:13; hub/main.go:121-143"},
+    {"pattern": "Free-text machine status with no lifecycle state machine", "area": "lifecycle", "verdict": "avoid", "effort": "-", "evidence": "hub/migrations.go:24; hub/main.go:980,1075"},
+    {"pattern": "Hardware inventory as wholesale-overwritten JSON blob", "area": "inventory", "verdict": "avoid", "effort": "-", "evidence": "hub/agentws.go:2185-2193"},
+    {"pattern": "Synchronous in-memory bulk commands", "area": "orchestration", "verdict": "avoid", "effort": "-", "evidence": "hub/main.go:583-758"},
+    {"pattern": "String-switch integrations and hard-coded UI actions", "area": "portal", "verdict": "avoid", "effort": "-", "evidence": "hub/main.go:2776; dashboard/src/app/machine/[id]/page.tsx:660-690"},
+    {"pattern": "Unfiltered global SSE event stream", "area": "authz", "verdict": "avoid", "effort": "-", "evidence": "hub/main.go:1089-1100"}
+  ]
+}

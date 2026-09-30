@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BloxOS Architecture Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6f9; --surface:#ffffff; --sunk:#eaeff4; --fg:#15202b; --muted:#566476; --line:#d3dbe4;
+  --accent:#0b7c77; --accent-soft:#dcf0ee; --seam:#a86300; --seam-soft:#fbeed6;
+  --warn:#bf3b28; --warn-soft:#fbe3de; --ok:#2a8347;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d131a; --surface:#131b24; --sunk:#0a0f15; --fg:#dde6ee; --muted:#8e9cad; --line:#27333f;
+    --accent:#3cc3b7; --accent-soft:#113835; --seam:#e2a23c; --seam-soft:#372a12;
+    --warn:#f07b65; --warn-soft:#3b1d18; --ok:#5ec27c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d131a; --surface:#131b24; --sunk:#0a0f15; --fg:#dde6ee; --muted:#8e9cad; --line:#27333f;
+  --accent:#3cc3b7; --accent-soft:#113835; --seam:#e2a23c; --seam-soft:#372a12;
+  --warn:#f07b65; --warn-soft:#3b1d18; --ok:#5ec27c;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15.5px/1.6 "IBM Plex Sans",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+a{color:var(--accent)}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em}
+code{background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:0 .3em;overflow-wrap:anywhere}
+h1,h2,h3{font-family:Sora,"IBM Plex Sans",sans-serif;line-height:1.25;letter-spacing:-.01em}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);margin:.2em 0 .4em}
+h2{font-size:1.45rem;margin:0 0 .5em;padding-top:.3em}
+h3{font-size:1.08rem;margin:1.4em 0 .4em}
+p,li{max-width:72ch}
+.wrap{max-width:1120px;margin:0 auto;padding:0 18px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;color:var(--accent)}
+header.top{padding:40px 0 24px;border-bottom:1px solid var(--line)}
+.lede{font-size:1.08rem;max-width:72ch}
+.verdict{border-left:3px solid var(--seam);background:var(--seam-soft);padding:10px 14px;border-radius:0 8px 8px 0;max-width:72ch;margin:14px 0}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.meta span{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.meta span.unv{border-color:var(--seam);color:var(--seam)}
+.theme-btn{float:right;font:500 .8rem "IBM Plex Mono",monospace;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+.layout{display:block}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px;padding:16px 0;border-bottom:1px solid var(--line)}
+nav.toc a{font:500 .8rem "IBM Plex Mono",monospace;text-decoration:none;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 11px}
+nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+@media (min-width:1024px){
+  .layout{display:grid;grid-template-columns:180px minmax(0,1fr);gap:28px}
+  nav.toc{position:sticky;top:0;align-self:start;flex-direction:column;flex-wrap:nowrap;border-bottom:0;padding:28px 0;max-height:100vh;overflow:auto}
+  nav.toc a{border-radius:8px}
+}
+main{min-width:0}
+section{padding:32px 0;border-bottom:1px solid var(--line)}
+section:last-child{border-bottom:0}
+.lead{font-weight:500}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h4{margin:0 0 6px;font:600 1rem Sora,"IBM Plex Sans",sans-serif}
+.card p{margin:.3em 0;font-size:.93rem}
+.card .ev{font-size:.8rem;color:var(--muted)}
+figure{margin:18px 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+figcaption{font-size:.9rem;color:var(--muted);padding:8px 4px 0;max-width:none}
+figcaption b{color:var(--fg)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.scroll svg{display:block;min-width:820px;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.8rem;color:var(--muted);padding:6px 4px 0}
+.legend i{display:inline-block;width:28px;height:0;border-top:2px solid var(--muted);vertical-align:middle;margin-right:6px}
+.legend i.acc{border-color:var(--accent)} .legend i.dash{border-top-style:dashed} .legend i.seam{border-color:var(--seam);border-top-style:dotted}
+.legend i.warn{border-color:var(--warn)}
+.legend b.sw{display:inline-block;width:14px;height:12px;border:1px solid var(--line);vertical-align:middle;margin-right:6px;border-radius:3px}
+/* svg */
+svg text{font-family:"IBM Plex Sans",sans-serif}
+.box{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.box-acc{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.box-sunk{fill:var(--sunk);stroke:var(--line);stroke-width:1.2}
+.box-seam{fill:var(--seam-soft);stroke:var(--seam);stroke-width:1.2;stroke-dasharray:6 4}
+.box-warn{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.2}
+.box-ok{fill:var(--surface);stroke:var(--ok);stroke-width:1.8}
+.bnd{fill:none;stroke:var(--seam);stroke-width:1.3;stroke-dasharray:9 5}
+.life{stroke:var(--line);stroke-width:1.2;stroke-dasharray:4 4}
+.ln{fill:none;stroke:var(--muted);stroke-width:1.4}
+.ln-acc{fill:none;stroke:var(--accent);stroke-width:2}
+.ln-dash{stroke-dasharray:6 4}
+.ln-seam{fill:none;stroke:var(--seam);stroke-width:1.5;stroke-dasharray:3 3}
+.ln-warn{fill:none;stroke:var(--warn);stroke-width:1.5;stroke-dasharray:7 3}
+.t-title{font-size:14px;font-weight:600;fill:var(--fg)}
+.t{font-size:13px;fill:var(--fg)}
+.t-mut{font-size:13px;fill:var(--muted)}
+.t-mono{font-family:"IBM Plex Mono",monospace !important;font-size:12.5px;fill:var(--muted)}
+.t-acc{fill:var(--accent)} .t-seam{fill:var(--seam)} .t-warn{fill:var(--warn)}
+.t-lbl{font-size:13px;fill:var(--fg);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.mk path{fill:var(--muted)} .mk-acc path{fill:var(--accent)} .mk-seam path{fill:var(--seam)} .mk-warn path{fill:var(--warn)}
+/* steps */
+ol.steps{padding-left:1.4em}
+ol.steps li{margin:.35em 0}
+.cmp{font-family:"IBM Plex Mono",monospace;font-size:.78rem;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:0 5px;margin-right:4px}
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem;min-width:720px}
+th{font:600 .72rem "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;background:var(--sunk)}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+/* details */
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:0 14px}
+summary{cursor:pointer;padding:11px 0;font-weight:600}
+details[open] summary{border-bottom:1px solid var(--line);margin-bottom:8px}
+details dl{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;margin:0 0 12px;font-size:.92rem}
+details dt{font:600 .72rem "IBM Plex Mono",monospace;text-transform:uppercase;color:var(--muted);padding-top:3px}
+details dd{margin:0}
+@media (max-width:560px){details dl{grid-template-columns:1fr} }
+/* adoption */
+.acard{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:10px 0;scroll-margin-top:12px}
+.acard h4{margin:0 0 8px;font:600 1rem Sora,"IBM Plex Sans",sans-serif;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.acard p{margin:.35em 0;font-size:.93rem}
+.acard .row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{font:600 .7rem "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.04em;border-radius:999px;padding:2px 9px;border:1px solid var(--line);background:var(--sunk);color:var(--muted);white-space:normal;max-width:100%;overflow-wrap:anywhere}
+.acard .row .pill{text-transform:none;letter-spacing:0;font-weight:500}
+.v-adopt{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.v-adapt{background:var(--seam-soft);color:var(--seam);border-color:var(--seam)}
+.v-avoid{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.v-watch{background:var(--sunk);color:var(--muted);border-style:dashed}
+.s-high{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.s-med{background:var(--seam-soft);color:var(--seam);border-color:var(--seam)}
+.s-low{background:var(--sunk);color:var(--muted)}
+.matrix td a{display:inline-block;margin:1px 4px 1px 0;font-size:.82rem}
+.matrix td.na{color:var(--muted);font-size:.84rem}
+.ap{display:grid;grid-template-columns:64px 1fr;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.ap:last-child{border-bottom:0}
+.ap h4{margin:0;font-size:.98rem}
+.ap p{margin:.2em 0;font-size:.92rem}
+.ap .ev{font-size:.8rem;color:var(--muted)}
+.note{font-size:.88rem;color:var(--muted)}
+.inf{font-style:italic;color:var(--seam)}
+ul.tight li{margin:.25em 0}
+footer{padding:28px 0 60px;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="ah" class="mk" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-acc" class="mk-acc" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-seam" class="mk-seam" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-warn" class="mk-warn" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+</svg>
+
+<div class="wrap">
+<header class="top">
+  <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle colour theme">Theme</button>
+  <div class="eyebrow">Architecture review · bokiko/bloxos</div>
+  <h1>BloxOS through a GPU-cloud management-plane lens</h1>
+  <p class="lede">BloxOS is a self-hosted dashboard for a small fleet of AI and home-lab machines. It has three parts: a single Go hub that stores everything in SQLite, a native Linux/Windows agent that dials home over WebSocket, and a Next.js UI. It monitors machines, runs a handful of allowlisted commands, opens web terminals, and rolls out signed agent updates.</p>
+  <p class="verdict"><b>Verdict for us:</b> a poor fit as a platform, and a good source of a few well-built mechanisms. It has no site, rack or topology model, no node state machine, no plugins, no audit log, no MCP, and it runs as a single process on SQLite. Borrow three things: the staged, telemetry-gated rollout controller; the two-phase enrollment handshake; and the at-least-once, ACK-after-commit telemetry journal.</p>
+  <div class="meta">
+    <span>SHA fcafbb3</span>
+    <span>last commit 2026-09-29</span>
+    <span>Go ≈ 29.5k LOC + 34k test · TS/TSX ≈ 20k · Python ≈ 9.5k (scripts)</span>
+    <span>Apache-2.0</span>
+    <span class="unv">shallow clone: 50 commits (2026-09-07 → 09-29), so contributors and cadence cannot be verified</span>
+    <span class="unv">no git tags in clone; release numbers taken from commit messages (v1.2.1 → v1.7.6 in Sept)</span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="Sections">
+  <a href="#one-screen">In one screen</a>
+  <a href="#topology">Topology</a>
+  <a href="#domain">Domain model</a>
+  <a href="#lifecycle">Lifecycle</a>
+  <a href="#flows">Flow traces</a>
+  <a href="#components">Components</a>
+  <a href="#decisions">Design decisions</a>
+  <a href="#questions-answered">Questions</a>
+  <a href="#adoption">Adoption</a>
+  <a href="#fit">Fit matrix</a>
+  <a href="#antipatterns">Anti-patterns</a>
+  <a href="#open">Open questions</a>
+  <a href="#appendix">Appendix</a>
+</nav>
+
+<main>
+<section id="one-screen">
+  <div class="eyebrow">01</div>
+  <h2>In one screen</h2>
+  <p class="lead">This is a single-tenant fleet monitor, not a management plane. A few of its subsystems are engineered far beyond the rest of the product, and those are the parts worth studying.</p>
+  <div class="cards">
+    <div class="card"><h4>Agents dial home; the hub never connects in</h4><p>Each agent opens an outbound WSS to <code>/ws/agent</code> and sends a ping every 30 s. The hub keeps an in-memory registry of whichever connection currently owns each machine. Commands, update announcements and ACKs all travel back over that one socket.</p><p class="ev"><code>hub/agentws.go:857</code> <code>handleAgentWS</code>, <code>:103</code> <code>registerAgentConnection</code></p></div>
+    <div class="card"><h4>Agent rollouts are a durable, gated reconcile loop</h4><p>The loop updates one canary per platform first, then batches of two. A node counts as healthy only after 60 s of unbroken telemetry on the connection that reported the new build. One failure halts that platform until an operator resumes it.</p><p class="ev"><code>hub/agent_rollout.go:37-89</code>, <code>:703</code> <code>dwellSatisfied</code></p></div>
+    <div class="card"><h4>Enrollment writes nothing until the node has durably saved its credential</h4><p>The hub issues the credential, the agent stages it on disk, the agent commits, and only then does the hub consume the token and confirm. If an install is interrupted, the same one-line command can simply be run again.</p><p class="ev"><code>hub/agentws.go:1208</code>, <code>:1525</code>, <code>:1739</code></p></div>
+    <div class="card"><h4>Telemetry from the node is at-least-once and idempotent</h4><p>The power journal records a stream id and a durable sequence number, and marks gaps explicitly. The hub sends its ACK only after the database commit, and a <code>UNIQUE(machine, stream, seq)</code> constraint deduplicates replays.</p><p class="ev"><code>agent/power_journal.go:409</code>, <code>hub/power_history.go:376</code></p></div>
+    <div class="card"><h4>There is no lifecycle and no inventory model to borrow</h4><p><code>machines.status</code> is a free-text column holding online, offline or error. Hardware arrives as a JSON blob that replaces the previous one wholesale, with no history. There are no sites, racks, maintenance state or automated remediation.</p><p class="ev"><code>hub/migrations.go:24</code>, <code>hub/agentws.go:2185</code></p></div>
+    <div class="card"><h4>Authorization is route-scoped RBAC, and audit covers terminals only</h4><p>There are three roles and fourteen scopes, and a boot-time check fails startup if any <code>/api</code> route lacks a scope. Commands, bulk actions and admin changes are not audited.</p><p class="ev"><code>hub/rbac.go:17-160</code>, <code>:276</code>, <code>hub/main.go:1408</code></p></div>
+  </div>
+</section>
+
+<section id="topology">
+  <div class="eyebrow">02</div>
+  <h2>Topology</h2>
+  <p class="lead">One hub host runs Caddy, the hub and the dashboard. Agents connect outbound to it, and there is no per-site tier. The hub is a single process that keeps authoritative state in SQLite and live coordination state in Go maps.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1000 520" role="img" aria-labelledby="topo-t">
+      <title id="topo-t">BloxOS runtime topology</title>
+      <!-- site boundary -->
+      <rect class="bnd" x="20" y="40" width="270" height="400" rx="10"/>
+      <text class="t-mono t-seam" x="34" y="62">SITE / LAN · N machines</text>
+      <rect class="box-acc" x="40" y="80" width="230" height="92" rx="8"/>
+      <text class="t-title" x="54" y="104">bloxos-agent (Linux)</text>
+      <text class="t-mut" x="54" y="124">systemd · User=root</text>
+      <text class="t-mono" x="54" y="144">nvidia-smi · RAPL · ipmitool</text>
+      <text class="t-mono" x="54" y="160">dmidecode · lspci · PTY</text>
+      <rect class="box-acc" x="40" y="195" width="230" height="70" rx="8"/>
+      <text class="t-title" x="54" y="219">bloxos-agent (Windows)</text>
+      <text class="t-mut" x="54" y="239">SCM · LocalSystem</text>
+      <text class="t-mut" x="54" y="255">no terminal</text>
+      <rect class="box-sunk" x="40" y="295" width="230" height="120" rx="8"/>
+      <text class="t-title" x="54" y="319">node-local durable state</text>
+      <text class="t-mono" x="54" y="341">/etc/bloxos/agent-secret</text>
+      <text class="t-mono" x="54" y="359">agent-update.pub (pinned)</text>
+      <text class="t-mono" x="54" y="377">release floor</text>
+      <text class="t-mono" x="54" y="395">power journal (≤32 MiB)</text>
+      <line class="ln" x1="155" y1="265" x2="155" y2="295" stroke-dasharray="3 3"/>
+
+      <!-- hub host boundary -->
+      <rect class="bnd" x="340" y="40" width="400" height="380" rx="10"/>
+      <text class="t-mono t-seam" x="354" y="62">HUB HOST · single process, no HA</text>
+      <rect class="box" x="360" y="72" width="360" height="58" rx="8"/>
+      <text class="t-title" x="374" y="95">Caddy (TLS, internal CA, RSA-2048)</text>
+      <text class="t-mono" x="374" y="116">/api /ws /join /download → hub · else → UI</text>
+      <rect class="box" x="360" y="160" width="120" height="130" rx="8"/>
+      <text class="t-title" x="374" y="184">dashboard</text>
+      <text class="t-mut" x="374" y="204">Next.js 16</text>
+      <text class="t-mut" x="374" y="222">static UI; no</text>
+      <text class="t-mut" x="374" y="238">agent access</text>
+      <rect class="box-acc" x="500" y="160" width="220" height="130" rx="8"/>
+      <text class="t-title" x="514" y="184">hub (Go · Echo)</text>
+      <text class="t-mut" x="514" y="204">REST · SSE · agent WS</text>
+      <text class="t-mut" x="514" y="222">terminal relay</text>
+      <text class="t-mut" x="514" y="240">rollout tick 10 s</text>
+      <text class="t-mut" x="514" y="258">alert loop 30 s</text>
+      <text class="t-mut" x="514" y="276">API pollers</text>
+      <rect class="box" x="500" y="320" width="105" height="70" rx="8"/>
+      <text class="t-title" x="512" y="344">SQLite</text>
+      <text class="t-mut" x="512" y="362">WAL, 1 writer</text>
+      <text class="t-mut t-acc" x="512" y="380">authoritative</text>
+      <rect class="box-seam" x="615" y="320" width="105" height="70" rx="8"/>
+      <text class="t-title" x="627" y="344">Go maps</text>
+      <text class="t-mut" x="627" y="362">agents, cmds,</text>
+      <text class="t-mut" x="627" y="380">SSE, evidence</text>
+      <rect class="box-sunk" x="360" y="320" width="120" height="70" rx="8"/>
+      <text class="t-title" x="372" y="344">bloxos-update</text>
+      <text class="t-mut" x="372" y="362">root worker</text>
+      <text class="t-mono" x="372" y="380">inbox/outbox</text>
+
+      <!-- externals -->
+      <rect class="box" x="790" y="72" width="190" height="58" rx="8"/>
+      <text class="t-title" x="804" y="96">Operator browser</text>
+      <text class="t-mut" x="804" y="116">JWT (localStorage)</text>
+      <rect class="box" x="790" y="160" width="190" height="50" rx="8"/>
+      <text class="t-title" x="804" y="182">Telegram</text>
+      <text class="t-mut" x="804" y="199">only alert sink</text>
+      <rect class="box" x="790" y="228" width="190" height="60" rx="8"/>
+      <text class="t-title" x="804" y="251">bloxos-sign (offline)</text>
+      <text class="t-mono" x="804" y="271">&lt;binary&gt;.sig files</text>
+      <rect class="box" x="790" y="330" width="190" height="60" rx="8"/>
+      <text class="t-title" x="804" y="353">Proxmox / Synology</text>
+      <text class="t-mut" x="804" y="372">API-polled, no agent</text>
+      <rect class="box" x="360" y="450" width="160" height="50" rx="8"/>
+      <text class="t-title" x="374" y="472">GitHub / GHCR</text>
+      <text class="t-mut" x="374" y="490">release images</text>
+
+      <!-- edges -->
+      <line class="ln-acc" x1="270" y1="112" x2="358" y2="95" marker-end="url(#ah-acc)"/>
+      <line class="ln-acc" x1="270" y1="225" x2="358" y2="118" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl t-acc" x="325" y="212" text-anchor="middle">outbound</text>
+      <text class="t-lbl t-acc" x="325" y="228" text-anchor="middle">WSS</text>
+      <line class="ln" x1="420" y1="130" x2="420" y2="158" marker-end="url(#ah)"/>
+      <line class="ln" x1="610" y1="130" x2="610" y2="158" marker-end="url(#ah)"/>
+      <line class="ln" x1="552" y1="290" x2="552" y2="318" marker-end="url(#ah)"/>
+      <line class="ln" x1="667" y1="290" x2="667" y2="318" marker-end="url(#ah)"/>
+      <line class="ln ln-dash" x1="500" y1="282" x2="482" y2="318" marker-end="url(#ah)"/>
+      <line class="ln" x1="790" y1="101" x2="722" y2="101" marker-end="url(#ah)"/>
+      <line class="ln ln-dash" x1="720" y1="185" x2="788" y2="185" marker-end="url(#ah)"/>
+      <line class="ln ln-dash" x1="790" y1="258" x2="722" y2="258" marker-end="url(#ah)"/>
+      <line class="ln ln-dash" x1="720" y1="282" x2="788" y2="352" marker-end="url(#ah)"/>
+      <line class="ln ln-dash" x1="420" y1="390" x2="420" y2="448" marker-end="url(#ah)"/>
+    </svg>
+    </div>
+    <div class="legend"><span><i class="acc"></i>agent control channel (agent-initiated)</span><span><i></i>internal call</span><span><i class="dash"></i>external or optional integration</span><span><i class="seam"></i>deployment boundary (dashed amber)</span><span><b class="sw" style="background:var(--seam-soft);border-color:var(--seam)"></b>in-memory only</span></div>
+    <figcaption><b>The only connection that crosses a site boundary is initiated by the agent.</b> Everything else runs on one host. No per-site proxy exists, and nothing queues commands for a disconnected node. The hub's host operations go through a separate root worker, so the hub itself never runs them (<code>hub/system_update.go:3-7</code>).</figcaption>
+  </figure>
+</section>
+
+<section id="domain">
+  <div class="eyebrow">03</div>
+  <h2>Domain model</h2>
+  <p class="lead">There is one entity that matters: <code>machines</code>. Their machine ≈ our node, but it has none of our physical hierarchy (site → rack → node → GPU/NIC), and its identity is whatever the agent asserts.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 960 560" role="img" aria-labelledby="dm-t">
+      <title id="dm-t">BloxOS entities and relationships</title>
+      <!-- center -->
+      <rect class="box-acc" x="380" y="190" width="220" height="120" rx="8"/>
+      <text class="t-title" x="394" y="214">machines</text>
+      <text class="t-mono" x="394" y="236">id = agent host.HostID</text>
+      <text class="t-mono" x="394" y="254">  (fallback: hostname)</text>
+      <text class="t-mono" x="394" y="272">status · tags · last_seen</text>
+      <text class="t-mono" x="394" y="290">hardware_info JSON</text>
+      <!-- left -->
+      <rect class="box" x="60" y="50" width="220" height="60" rx="8"/>
+      <text class="t-title" x="74" y="74">agent_credentials</text>
+      <text class="t-mono" x="74" y="94">secret_hash · pending_*</text>
+      <rect class="box" x="60" y="140" width="220" height="60" rx="8"/>
+      <text class="t-title" x="74" y="164">tokens (install)</text>
+      <text class="t-mono" x="74" y="184">hash · 15 min · target_id</text>
+      <rect class="box" x="60" y="230" width="220" height="60" rx="8"/>
+      <text class="t-title" x="74" y="254">api_machines</text>
+      <text class="t-mono" x="74" y="274">adapter_type · auth_config</text>
+      <rect class="box" x="60" y="320" width="220" height="60" rx="8"/>
+      <text class="t-title" x="74" y="344">terminal_sessions</text>
+      <text class="t-mono" x="74" y="364">user_id · source_ip (audit)</text>
+      <rect class="box" x="60" y="420" width="220" height="60" rx="8"/>
+      <text class="t-title" x="74" y="444">users</text>
+      <text class="t-mono" x="74" y="464">role · pin_hash · prefs</text>
+      <!-- right -->
+      <rect class="box" x="680" y="40" width="240" height="60" rx="8"/>
+      <text class="t-title" x="694" y="64">metrics · gpu_metrics</text>
+      <text class="t-mono" x="694" y="84">7 d · gpu_index (no UUID)</text>
+      <rect class="box" x="680" y="120" width="240" height="50" rx="8"/>
+      <text class="t-title" x="694" y="143">services · containers</text>
+      <text class="t-mono" x="694" y="160">latest snapshot</text>
+      <rect class="box" x="680" y="190" width="240" height="60" rx="8"/>
+      <text class="t-title" x="694" y="214">alerts ← alert_rules</text>
+      <text class="t-mono" x="694" y="234">active · resolved (30 d)</text>
+      <rect class="box" x="680" y="270" width="240" height="70" rx="8"/>
+      <text class="t-title" x="694" y="294">power_history_records</text>
+      <text class="t-mono" x="694" y="313">UNIQUE(machine,stream,seq)</text>
+      <text class="t-mono" x="694" y="330">+ stream_state · gaps</text>
+      <rect class="box" x="680" y="360" width="240" height="60" rx="8"/>
+      <text class="t-title" x="694" y="384">agent_rollout_platform/slot</text>
+      <text class="t-mono" x="694" y="404">generation · stage · state</text>
+      <!-- memory -->
+      <rect class="box-seam" x="380" y="360" width="220" height="130" rx="8"/>
+      <text class="t-title" x="394" y="384">in memory only</text>
+      <text class="t-mut" x="394" y="404">agents registry (conn owner)</text>
+      <text class="t-mut" x="394" y="422">pendingCmds · SSE clients</text>
+      <text class="t-mut" x="394" y="440">rollout dwell evidence</text>
+      <text class="t-mut" x="394" y="458">AI-session snapshots</text>
+      <text class="t-mut" x="394" y="476">running agent versions</text>
+      <!-- node -->
+      <rect class="box-sunk" x="680" y="450" width="240" height="70" rx="8"/>
+      <text class="t-title" x="694" y="474">on the node (authoritative)</text>
+      <text class="t-mut" x="694" y="492">release floor · power journal</text>
+      <text class="t-mut" x="694" y="508">agent-secret (+ .pending)</text>
+      <!-- edges: dashed = no FK -->
+      <line class="ln ln-dash" x1="280" y1="80" x2="380" y2="205"/>
+      <line class="ln ln-dash" x1="280" y1="170" x2="380" y2="225"/>
+      <line class="ln ln-dash" x1="280" y1="260" x2="380" y2="260"/>
+      <line class="ln" x1="280" y1="350" x2="380" y2="295"/>
+      <line class="ln" x1="170" y1="420" x2="170" y2="380"/>
+      <line class="ln" x1="600" y1="205" x2="680" y2="70"/>
+      <line class="ln ln-dash" x1="600" y1="220" x2="680" y2="145"/>
+      <line class="ln" x1="600" y1="240" x2="680" y2="220"/>
+      <line class="ln" x1="600" y1="270" x2="680" y2="300"/>
+      <line class="ln ln-dash" x1="600" y1="295" x2="680" y2="385"/>
+      <text class="t-lbl" x="330" y="120" text-anchor="middle">1:1</text>
+      <text class="t-lbl" x="330" y="252" text-anchor="middle">"api-"+id</text>
+      <text class="t-lbl" x="178" y="404">user_id</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i></i>FK (no cascade; delete is hand-coded)</span><span><i class="dash"></i>logical link, no FK</span><span><b class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></b>central entity</span><span><b class="sw" style="background:var(--seam-soft);border-color:var(--seam)"></b>lost on restart</span></div>
+    <figcaption><b>SQLite is the source of truth for everything except live connections and node-side safety state.</b> There are no site, rack, PDU, NIC-fabric or GPU entities. GPUs exist only as rows keyed by <code>gpu_index</code> inside metrics, plus a JSON blob. Delete is a manual multi-table transaction (<code>hub/main.go:830</code>).</figcaption>
+  </figure>
+  <h3>What the code confirms</h3>
+  <ul class="tight">
+    <li><b>Identity is self-asserted.</b> <code>getMachineID()</code> returns gopsutil <code>HostID</code> and falls back to the hostname (<code>agent/main.go:1176</code>). The hub accepts it from the first metrics frame and binds it to the credential only after enrollment (<code>hub/agentws.go:1139-1140</code>). Serial numbers are collected (<code>agent/hardware_types.go:56-57</code>) but never used for identity. <span class="inf">Inferred risk: cloned images that share <code>/etc/machine-id</code> would collide.</span></li>
+    <li><b>Physical and logical state are not separated.</b> The hardware snapshot, live status, tags and notes are all columns on one row. <code>hardware_info</code> is overwritten on every connect (<code>hub/agentws.go:2185-2193</code>), and nothing keeps history or detects drift.</li>
+    <li><b>Grouping is a comma-joined <code>tags</code> string</b> (<code>hub/main.go:818</code>). API machines reuse <code>tags</code> to hold their adapter type (<code>hub/main.go:2828</code>).</li>
+    <li><b>Discovery:</b> the agent pushes one hardware snapshot per connect (<code>agent/main.go:759</code>), built from dmidecode, lspci and sysfs. It collects no GPU serial or UUID in inventory; the GPU UUID appears only as a power-stream key (<code>agent/power_nvidia.go:49</code>). There is no Redfish, and the BMC is used only for DCMI power reads (<code>agent/power_sources_linux.go:54-88</code>).</li>
+  </ul>
+</section>
+
+<section id="lifecycle">
+  <div class="eyebrow">04</div>
+  <h2>Lifecycle</h2>
+  <p class="lead">Machines have no lifecycle state machine. The only explicit, guarded state machine in the repo tracks each machine's slot in an agent rollout. It is still the most transferable piece of design here.</p>
+  <p>Machine status is <code>online</code>, <code>offline</code> or <code>error</code>. Every metrics frame sets <code>online</code> (<code>hub/main.go:980-995</code>). Disconnect sets <code>offline</code>, but only when this socket still owns the registry entry (<code>hub/agentws.go:126-151</code>). An API poll failure sets <code>error</code> (<code>hub/main.go:1067</code>). Nothing reconciles status on startup: <code>hub/main.go:1076</code> is the only statement that marks a machine offline, so after a hub crash a row can read <code>online</code> until the alert rule notices a stale <code>last_seen</code>.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 900 430" role="img" aria-labelledby="lc-t">
+      <title id="lc-t">Rollout slot state machine</title>
+      <circle cx="70" cy="150" r="14" class="box-sunk"/>
+      <text class="t-mut" x="70" y="126" text-anchor="middle">no slot</text>
+      <rect class="box-acc" x="170" y="120" width="140" height="60" rx="8"/>
+      <text class="t-title" x="240" y="145" text-anchor="middle">reserved</text>
+      <text class="t-mut" x="240" y="164" text-anchor="middle">resend ≤ 3</text>
+      <rect class="box-acc" x="430" y="40" width="140" height="56" rx="8"/>
+      <text class="t-title" x="500" y="64" text-anchor="middle">offered</text>
+      <text class="t-mut" x="500" y="82" text-anchor="middle">write succeeded</text>
+      <rect class="box-acc" x="430" y="200" width="140" height="56" rx="8"/>
+      <text class="t-title" x="500" y="224" text-anchor="middle">observed</text>
+      <text class="t-mut" x="500" y="242" text-anchor="middle">runs candidate</text>
+      <rect class="box-ok" x="720" y="120" width="140" height="60" rx="8"/>
+      <text class="t-title" x="790" y="145" text-anchor="middle">healthy</text>
+      <text class="t-mut" x="790" y="164" text-anchor="middle">terminal</text>
+      <rect class="box-warn" x="720" y="290" width="140" height="60" rx="8"/>
+      <text class="t-title" x="790" y="315" text-anchor="middle">failed</text>
+      <text class="t-mut" x="790" y="334" text-anchor="middle">platform halted</text>
+      <rect class="box-seam" x="170" y="290" width="140" height="60" rx="8"/>
+      <text class="t-title" x="240" y="315" text-anchor="middle">withheld</text>
+      <text class="t-mut" x="240" y="334" text-anchor="middle">not a failure</text>
+
+      <line class="ln-acc" x1="84" y1="150" x2="168" y2="150" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl" x="126" y="140" text-anchor="middle">reserve</text>
+      <line class="ln-acc" x1="310" y1="132" x2="428" y2="72" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl" x="350" y="92" text-anchor="middle">markOffered</text>
+      <line class="ln-acc" x1="310" y1="168" x2="428" y2="224" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl" x="352" y="220" text-anchor="middle">SHA reported</text>
+      <line class="ln-acc" x1="500" y1="96" x2="500" y2="198" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl" x="508" y="152">SHA reported</text>
+      <line class="ln-acc" x1="570" y1="68" x2="718" y2="140" marker-end="url(#ah-acc)"/>
+      <line class="ln-acc" x1="570" y1="228" x2="718" y2="162" marker-end="url(#ah-acc)"/>
+      <text class="t-lbl" x="790" y="90" text-anchor="middle">60 s dwell on same</text>
+      <text class="t-lbl" x="790" y="107" text-anchor="middle">connection, gaps &lt; 45 s</text>
+      <line class="ln-warn" x1="570" y1="244" x2="718" y2="308" marker-end="url(#ah-warn)"/>
+      <text class="t-lbl t-warn" x="700" y="349" text-anchor="end">10 min deadline</text>
+      <text class="t-lbl t-warn" x="700" y="366" text-anchor="end">or resends exhausted</text>
+      <path class="ln-seam" d="M790,350 L790,400 L330,400 L330,260 L290,260 L290,182" marker-end="url(#ah-seam)"/>
+      <text class="t-lbl t-seam" x="560" y="394" text-anchor="middle">operator resume · attempt + 1 (all platforms)</text>
+      <path class="ln-seam" d="M70,164 L70,320 L168,320" marker-end="url(#ah-seam)"/>
+      <text class="t-lbl t-seam" x="78" y="235">eligibility</text>
+      <text class="t-lbl t-seam" x="78" y="252">refused</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i class="acc"></i>normal progress</span><span><i class="warn" style="border-top-style:dashed"></i>failure → halts platform</span><span><i class="seam"></i>operator or eligibility path</span></div>
+    <figcaption><b>The guards live in SQL <code>WHERE</code> clauses, which makes every transition a compare-and-swap.</b> Each platform row has a generation, a stage and a status of active or halted. Stage 0 has capacity 1 (the canary), and every later stage has capacity 2 (<code>hub/agent_rollout.go:50-51,188</code>). A new candidate SHA starts a new generation, so rows from an old generation are never reused (<code>:251-289</code>).</figcaption>
+  </figure>
+  <h3>Transition guards (code)</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Transition</th><th>Where</th><th>Guard</th></tr></thead>
+    <tbody>
+      <tr><td>none → reserved</td><td><code>reserve</code> <code>hub/agent_rollout.go:322</code></td><td>Platform not halted, and fewer outstanding slots than the stage allows. Runs in one transaction.</td></tr>
+      <tr><td>reserved → offered</td><td><code>markOffered</code> <code>:499</code></td><td><code>WHERE attempt=? AND state='reserved'</code>, run after the socket write succeeds.</td></tr>
+      <tr><td>reserved|offered → observed</td><td><code>observeRunningCandidate</code> <code>:491</code></td><td>The agent's own version report says it runs the candidate. The hub's announcement alone never counts.</td></tr>
+      <tr><td>outstanding → healthy</td><td><code>tick</code> <code>:790</code>, <code>dwellSatisfied</code> <code>:703</code></td><td>Evidence comes from the currently registered connection, the last frame is under 45 s old, and the dwell is at least 60 s measured between frames on hub receive time.</td></tr>
+      <tr><td>outstanding → failed</td><td><code>tick</code>, <code>failSlotTx</code> <code>:541</code></td><td>The 10 min deadline passes, or all 3 resends are used. Either halts the platform.</td></tr>
+      <tr><td>stage → stage+1</td><td><code>:866</code></td><td>A single atomic <code>UPDATE</code> that requires no outstanding slots and at least one healthy slot.</td></tr>
+      <tr><td>failed → reserved</td><td><code>resumeTx</code> <code>:1055-1077</code></td><td>Operator only. There is no cap on attempts, and resume applies to every platform (<code>hub/agent_versions.go:1058</code>).</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="flows">
+  <div class="eyebrow">05</div>
+  <h2>Flow traces</h2>
+  <p class="lead">Four flows, closest to our domain first. Onboarding and rollout are carefully engineered. The health path stops at a notification, and the user-action path leaves no audit trail.</p>
+
+  <h3 id="flow-a">A · A node being onboarded</h3>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 980 540" role="img" aria-labelledby="fa-t">
+      <title id="fa-t">Enrollment sequence</title>
+      <rect class="box" x="20" y="20" width="160" height="36" rx="8"/><text class="t-title" x="100" y="43" text-anchor="middle">Operator · UI</text>
+      <rect class="box-acc" x="280" y="20" width="160" height="36" rx="8"/><text class="t-title" x="360" y="43" text-anchor="middle">hub</text>
+      <rect class="box" x="540" y="20" width="160" height="36" rx="8"/><text class="t-title" x="620" y="43" text-anchor="middle">new node · shell</text>
+      <rect class="box-acc" x="780" y="20" width="160" height="36" rx="8"/><text class="t-title" x="860" y="43" text-anchor="middle">bloxos-agent</text>
+      <line class="life" x1="100" y1="56" x2="100" y2="525"/><line class="life" x1="360" y1="56" x2="360" y2="525"/>
+      <line class="life" x1="620" y1="56" x2="620" y2="525"/><line class="life" x1="860" y1="56" x2="860" y2="525"/>
+
+      <line class="ln" x1="100" y1="90" x2="358" y2="90" marker-end="url(#ah)"/><text class="t-lbl" x="230" y="84" text-anchor="middle">1 POST /api/tokens</text>
+      <rect class="box-sunk" x="370" y="106" width="210" height="24" rx="4"/><text class="t" x="380" y="122">2 store SHA-256(token), TTL 15 m</text>
+      <line class="ln" x1="360" y1="152" x2="102" y2="152" marker-end="url(#ah)"/><text class="t-lbl" x="230" y="146" text-anchor="middle">3 one-liner, curl --pinnedpubkey</text>
+      <line class="ln ln-dash" x1="100" y1="184" x2="618" y2="184" marker-end="url(#ah)"/><text class="t-lbl" x="490" y="178" text-anchor="middle">4 operator pastes on node</text>
+      <line class="ln" x1="620" y1="216" x2="362" y2="216" marker-end="url(#ah)"/><text class="t-lbl" x="490" y="210" text-anchor="middle">5 GET /join/&lt;code&gt; (not consumed)</text>
+      <line class="ln" x1="620" y1="248" x2="362" y2="248" marker-end="url(#ah)"/><text class="t-lbl" x="490" y="242" text-anchor="middle">6 install.sh + agent (SHA pinned)</text>
+      <line class="ln" x1="620" y1="280" x2="858" y2="280" marker-end="url(#ah)"/><text class="t-lbl" x="740" y="274" text-anchor="middle">7 systemd unit, start</text>
+      <line class="ln-acc" x1="860" y1="314" x2="362" y2="314" marker-end="url(#ah-acc)"/><text class="t-lbl" x="610" y="308" text-anchor="middle">8 WSS + X-Bloxos-Enroll-Token, metrics</text>
+      <line class="ln-acc" x1="360" y1="346" x2="858" y2="346" marker-end="url(#ah-acc)"/><text class="t-lbl" x="610" y="340" text-anchor="middle">9 enrolled{agent_secret}, hub writes nothing</text>
+      <rect class="box-sunk" x="660" y="364" width="194" height="24" rx="4"/><text class="t" x="670" y="380">10 stage agent-secret.pending</text>
+      <line class="ln-acc" x1="860" y1="412" x2="362" y2="412" marker-end="url(#ah-acc)"/><text class="t-lbl" x="610" y="406" text-anchor="middle">11 enrollment_committed</text>
+      <rect class="box-acc" x="370" y="428" width="300" height="24" rx="4"/><text class="t" x="380" y="444">12 one tx: re-check token, mark used, insert cred</text>
+      <line class="ln-acc" x1="360" y1="474" x2="858" y2="474" marker-end="url(#ah-acc)"/><text class="t-lbl" x="610" y="468" text-anchor="middle">13 enrollment_confirmed{secret_sha256}</text>
+      <rect class="box-sunk" x="660" y="492" width="194" height="24" rx="4"/><text class="t" x="670" y="508">14 durableRename → active</text>
+    </svg>
+    </div>
+    <div class="legend"><span><i class="acc"></i>credential handshake on the agent socket</span><span><i></i>HTTP bootstrap</span><span><i class="dash"></i>human step</span></div>
+    <figcaption><b>The token is consumed only after the node proves it has saved the secret durably.</b> Any crash before step 12 leaves the token usable. Once step 12 has committed, a lost confirmation is repaired on reconnect by hash match.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><span class="cmp">hub</span> <code>handleCreateToken</code> <code>hub/agentws.go:158</code> requires <code>PUBLIC_URL</code> and a servable agent binary, then classifies the CA. Rate limit is 3/min (<code>:160</code>).</li>
+    <li><span class="cmp">hub</span> stores the token hash with a 15-minute TTL plus a mint-time base/CA binding (<code>hub/join.go:61</code>, <code>hub/agentws.go:223</code>).</li>
+    <li><span class="cmp">hub</span> <code>buildLinuxJoinCommand</code> <code>hub/join.go:498</code>. Behind a private CA the command pins the leaf's SPKI (<code>curl -k --pinnedpubkey</code>). If the hub cannot obtain a pin, it returns 503 and mints nothing.</li>
+    <li><span class="cmp">operator</span> runs the one-liner on the node. The script is downloaded whole before any of it executes (<code>docs/architecture.md</code>, "One-line Linux onboarding").</li>
+    <li><span class="cmp">hub</span> <code>handleJoinScript</code> <code>hub/join.go:599</code> → <code>joinCodeUsable</code> <code>:528</code>. The GET never consumes the code, and every unusable code gets the same 404.</li>
+    <li><span class="cmp">hub</span> <code>handleInstallScript</code> <code>hub/agentws.go:326</code> serves the script, and the script checks the binary's SHA.</li>
+    <li><span class="cmp">node</span> writes a unit with <code>User=root</code> and <code>Environment="BLOXOS_TOKEN=…"</code>, plus <code>OnFailure=</code> recovery, then restarts the service (<code>hub/agentws.go:505-513,580</code>).</li>
+    <li><span class="cmp">agent</span> <code>runAgent</code> <code>agent/main.go:573</code> dials with the enroll-token header (<code>:629-634</code>). Hub <code>handleAgentWS</code> <code>hub/agentws.go:857</code> validates the token (<code>:929</code>) inside a fixed 30 s auth window (<code>:843</code>).</li>
+    <li><span class="cmp">hub</span> sees a valid token and no existing credential, so it generates a secret and sends <code>enrolled</code> without writing it (<code>hub/agentws.go:1208-1229</code>). <span class="inf">Caveat: the same metrics frame has already upserted a <code>machines</code> row (<code>:1285-1301</code>).</span></li>
+    <li><span class="cmp">agent</span> <code>handleEnrolledFrame</code> <code>agent/credential_handoff.go:152</code> writes <code>agent-secret.pending</code> atomically.</li>
+    <li><span class="cmp">agent</span> sends <code>enrollment_committed</code> (<code>agent/main.go:667-673</code>).</li>
+    <li><span class="cmp">hub</span> <code>consumeTokenAndStoreCredential</code> <code>hub/agentws.go:1739</code>, one transaction. Then <code>registerAgentConnection</code> and <code>completeAuth</code> run, and held hardware and version reports are flushed (<code>:1560-1577</code>).</li>
+    <li><span class="cmp">hub</span> sends <code>enrollment_confirmed{secret_sha256}</code> (<code>:1578</code>).</li>
+    <li><span class="cmp">agent</span> <code>handleEnrollmentConfirmed</code> <code>agent/credential_handoff.go:222</code> promotes the secret with a hash-matched <code>durableRename</code>.</li>
+  </ol>
+  <p class="note"><b>Docs vs code:</b> the comment on <code>agent/main_linux.go:186-190</code> says a stale token "never persists past a successful install". But the generated unit keeps <code>BLOXOS_TOKEN</code> (<code>hub/agentws.go:513</code>), and on Linux the wipe is a no-op, so every restart re-sends a token that has already been consumed. That is harmless because the token is spent, but the comment is wrong.</p>
+
+  <h3 id="flow-b">B · A health failure detected and acted on</h3>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 980 240" role="img" aria-labelledby="fb-t">
+      <title id="fb-t">Health signal to alert pipeline</title>
+      <rect class="box-acc" x="20" y="50" width="150" height="90" rx="8"/>
+      <text class="t-title" x="34" y="74">agent</text><text class="t-mut" x="34" y="94">every 30 s</text><text class="t-mono" x="34" y="114">nvidia-smi -x -q</text><text class="t-mono" x="34" y="130">gopsutil</text>
+      <rect class="box" x="210" y="50" width="160" height="90" rx="8"/>
+      <text class="t-title" x="224" y="74">storeMetrics</text><text class="t-mut" x="224" y="94">GPU[0] → metrics</text><text class="t-mut" x="224" y="112">all → gpu_metrics</text><text class="t-mut" x="224" y="130">kept 7 d</text>
+      <rect class="box" x="410" y="50" width="170" height="90" rx="8"/>
+      <text class="t-title" x="424" y="74">alertEvalLoop</text><text class="t-mut" x="424" y="94">poll every 30 s</text><text class="t-mut" x="424" y="112">window scan of metrics</text><text class="t-mut" x="424" y="130">duration in memory</text>
+      <rect class="box" x="620" y="50" width="150" height="90" rx="8"/>
+      <text class="t-title" x="634" y="74">alerts row</text><text class="t-mut" x="634" y="94">active → resolved</text><text class="t-mut" x="634" y="112">operator ack</text><text class="t-mut" x="634" y="130">no acked_by</text>
+      <rect class="box" x="810" y="30" width="150" height="50" rx="8"/>
+      <text class="t-title" x="824" y="52">Telegram</text><text class="t-mut" x="824" y="70">5 s / 10 s budget</text>
+      <rect class="box" x="810" y="110" width="150" height="50" rx="8"/>
+      <text class="t-title" x="824" y="132">SSE → dashboard</text><text class="t-mut" x="824" y="150">dropped if slow</text>
+      <rect class="box-warn" x="410" y="178" width="360" height="44" rx="8"/>
+      <text class="t-title t-warn" x="590" y="205" text-anchor="middle">no drain · no quarantine · no RMA: a human acts</text>
+      <line class="ln-acc" x1="170" y1="95" x2="208" y2="95" marker-end="url(#ah-acc)"/>
+      <line class="ln-acc" x1="370" y1="95" x2="408" y2="95" marker-end="url(#ah-acc)"/>
+      <line class="ln-acc" x1="580" y1="95" x2="618" y2="95" marker-end="url(#ah-acc)"/>
+      <line class="ln" x1="770" y1="82" x2="808" y2="58" marker-end="url(#ah)"/>
+      <line class="ln" x1="770" y1="108" x2="808" y2="132" marker-end="url(#ah)"/>
+      <line class="ln-warn" x1="695" y1="140" x2="695" y2="176" marker-end="url(#ah-warn)"/>
+    </svg>
+    </div>
+    <figcaption><b>The health path ends in a message; nothing changes state automatically.</b> Rules cover only <code>cpu</code>, <code>ram</code>, <code>disk</code>, <code>gpu_temp</code> and <code>machine_offline</code> (<code>hub/alerts.go:212-258</code>). The agent collects no Xid, ECC, throttle, NVLink, DCGM or InfiniBand signals.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><span class="cmp">agent</span> a 30 s ticker (<code>agent/main.go:733</code>) calls <code>sendAll</code> (<code>:785-795</code>). GPU data comes from forking <code>nvidia-smi -x -q</code> (<code>collectGPUMetrics</code> <code>:1226</code>), not from NVML.</li>
+    <li><span class="cmp">hub</span> <code>storeMetrics</code> <code>hub/main.go:1007</code> copies <code>GPUs[0]</code> into the <code>metrics</code> row (<code>:1010-1014</code>) and writes every GPU to <code>gpu_metrics</code> (<code>:1038</code>).</li>
+    <li><span class="cmp">hub</span> <code>alertEvalLoop</code> <code>hub/alerts.go:84</code> → <code>evaluateAlertsAt</code> <code>:105</code> runs a <code>ROW_NUMBER() OVER (PARTITION BY machine_id)</code> scan (<code>:118-132</code>). Pending durations live in an in-memory map (<code>:264-274</code>). <code>gpu_temp</code> reads the GPU[0] column, so alerts only ever cover GPU 0.</li>
+    <li><span class="cmp">hub</span> inserts an <code>alerts</code> row when a rule opens (<code>:279</code>) and sets <code>resolved_at</code> when it clears (<code>:323</code>).</li>
+    <li><span class="cmp">hub</span> <code>sendTelegramBatch</code> <code>:441</code> runs after the lock is released, with no retry. The SSE <code>alert</code> event is dropped for slow clients (<code>:410-425</code>).</li>
+    <li>Offline detection has two parts. The socket read deadline is 90 s (<code>hub/agentws.go:855</code>), after which <code>markOffline</code> runs (<code>hub/main.go:1075</code>). Separately, the alert rule compares <code>now − last_seen</code> against 120 s (<code>hub/alerts.go:241-256</code>).</li>
+  </ol>
+
+  <h3 id="flow-c">C · A user action from UI to the thing that changes</h3>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 980 390" role="img" aria-labelledby="fc-t">
+      <title id="fc-t">Reboot command sequence</title>
+      <rect class="box" x="20" y="20" width="160" height="36" rx="8"/><text class="t-title" x="100" y="43" text-anchor="middle">Browser (RebootModal)</text>
+      <rect class="box-acc" x="280" y="20" width="160" height="36" rx="8"/><text class="t-title" x="360" y="43" text-anchor="middle">hub</text>
+      <rect class="box-acc" x="560" y="20" width="160" height="36" rx="8"/><text class="t-title" x="640" y="43" text-anchor="middle">agent</text>
+      <rect class="box" x="790" y="20" width="160" height="36" rx="8"/><text class="t-title" x="870" y="43" text-anchor="middle">systemd / docker</text>
+      <line class="life" x1="100" y1="56" x2="100" y2="375"/><line class="life" x1="360" y1="56" x2="360" y2="375"/>
+      <line class="life" x1="640" y1="56" x2="640" y2="375"/><line class="life" x1="870" y1="56" x2="870" y2="375"/>
+      <line class="ln" x1="100" y1="90" x2="358" y2="90" marker-end="url(#ah)"/><text class="t-lbl" x="230" y="84" text-anchor="middle">1 POST /api/machines/:id/command</text>
+      <rect class="box-sunk" x="370" y="106" width="240" height="24" rx="4"/><text class="t" x="380" y="122">2 JWT → route scope fleet.control</text>
+      <rect class="box-sunk" x="370" y="138" width="240" height="24" rx="4"/><text class="t" x="380" y="154">3 pendingCmds[cmd-xxxx] = chan</text>
+      <line class="ln-acc" x1="360" y1="186" x2="638" y2="186" marker-end="url(#ah-acc)"/><text class="t-lbl" x="500" y="180" text-anchor="middle">4 {type, target, id} under WriteMu</text>
+      <rect class="box-sunk" x="650" y="202" width="200" height="24" rx="4"/><text class="t" x="660" y="218">5 allowlist + target regex</text>
+      <line class="ln-acc" x1="640" y1="250" x2="868" y2="250" marker-end="url(#ah-acc)"/><text class="t-lbl" x="755" y="244" text-anchor="middle">6 fixed argv, no shell, 30 s</text>
+      <line class="ln-acc" x1="640" y1="282" x2="362" y2="282" marker-end="url(#ah-acc)"/><text class="t-lbl" x="500" y="276" text-anchor="middle">7 command_response{id}</text>
+      <line class="ln" x1="360" y1="314" x2="102" y2="314" marker-end="url(#ah)"/><text class="t-lbl" x="230" y="308" text-anchor="middle">8 200 · 202 accepted · 504</text>
+      <rect class="box-warn" x="370" y="336" width="240" height="24" rx="4"/><text class="t t-warn" x="380" y="352">no audit row: who, what, result</text>
+    </svg>
+    </div>
+    <figcaption><b>The API is honest about whether a command was delivered, and silent about who sent it.</b> A reboot that severs the socket returns <code>202 accepted</code> rather than claiming success. There is no job record, no idempotency key and no audit entry.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><span class="cmp">UI</span> <code>RebootModal.tsx:31</code> sends a POST with <code>{type:"reboot"}</code> and a Bearer JWT taken from localStorage (<code>dashboard/src/lib/session.ts:9-14</code>).</li>
+    <li><span class="cmp">hub</span> the protected group applies <code>jwtMiddleware → credentialRotationMiddleware → permissionMiddleware</code> (<code>hub/main.go:309</code>). The role is re-read from the DB on every request (<code>hub/rbac.go:162</code>).</li>
+    <li><span class="cmp">hub</span> <code>handleCommand</code> <code>hub/main.go:1408</code> returns 404 if the agent is not connected. Otherwise it registers a one-slot channel in the global <code>pendingCmds</code> map.</li>
+    <li><span class="cmp">hub</span> forwards <code>req.Type</code> without validating it (<code>:1445</code>) and writes under <code>agent.WriteMu</code>.</li>
+    <li><span class="cmp">agent</span> checks <code>allowedCommands</code> (<code>agent/main.go:132-142</code>) and the target regex <code>^[a-zA-Z0-9._-]+$</code> (<code>:129</code>).</li>
+    <li><span class="cmp">agent</span> <code>commandPlanForIdentity</code> <code>agent/command_plan.go:174</code> builds a fixed argv with no shell, a 30 s timeout, and a process-group kill.</li>
+    <li><span class="cmp">agent → hub</span> the <code>command_response</code> is matched by id (<code>hub/agentws.go:1507-1523</code>).</li>
+    <li><span class="cmp">hub</span> waits 10 s, or 2 s for commands that sever the socket (<code>hub/command_feedback.go:10-30</code>). On timeout it returns 202 <code>accepted</code> for a reboot, shutdown or self-restart, and 504 otherwise (<code>hub/main.go:1476-1481</code>).</li>
+  </ol>
+  <p class="note">Bulk (<code>handleBulkCommand</code> <code>hub/main.go:601</code>) accepts at most 100 targets and runs at most 20 at once (<code>:583-590</code>). Results come back synchronously when the whole batch finishes. Cancellation happens only when the client disconnects, and the result distinguishes "not sent" from "completion unknown" (<code>:597-598</code>).</p>
+
+  <h3 id="flow-d">D · A desired-state change being reconciled (agent release)</h3>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 980 490" role="img" aria-labelledby="fd-t">
+      <title id="fd-t">Rollout reconcile sequence</title>
+      <rect class="box-acc" x="30" y="20" width="160" height="36" rx="8"/><text class="t-title" x="110" y="43" text-anchor="middle">rollout scheduler</text>
+      <rect class="box" x="250" y="20" width="160" height="36" rx="8"/><text class="t-title" x="330" y="43" text-anchor="middle">SQLite slots</text>
+      <rect class="box-acc" x="500" y="20" width="160" height="36" rx="8"/><text class="t-title" x="580" y="43" text-anchor="middle">canary agent</text>
+      <rect class="box" x="760" y="20" width="160" height="36" rx="8"/><text class="t-title" x="840" y="43" text-anchor="middle">batch agents (×2)</text>
+      <line class="life" x1="110" y1="56" x2="110" y2="475"/><line class="life" x1="330" y1="56" x2="330" y2="475"/>
+      <line class="life" x1="580" y1="56" x2="580" y2="475"/><line class="life" x1="840" y1="56" x2="840" y2="475"/>
+      <rect class="box-sunk" x="120" y="78" width="200" height="24" rx="4"/><text class="t" x="130" y="94">1 tick 10 s · announceDecision</text>
+      <line class="ln" x1="110" y1="124" x2="328" y2="124" marker-end="url(#ah)"/><text class="t-lbl" x="220" y="118" text-anchor="middle">2 reserve (stage 0, cap 1)</text>
+      <line class="ln-acc" x1="110" y1="156" x2="578" y2="156" marker-end="url(#ah-acc)"/><text class="t-lbl" x="450" y="150" text-anchor="middle">3 agent_version{sha, signature}</text>
+      <line class="ln" x1="110" y1="188" x2="328" y2="188" marker-end="url(#ah)"/><text class="t-lbl" x="220" y="182" text-anchor="middle">4 markOffered</text>
+      <rect class="box-sunk" x="590" y="206" width="230" height="24" rx="4"/><text class="t" x="600" y="222">5 verify: TLS, pinned key, floor</text>
+      <rect class="box-sunk" x="590" y="238" width="230" height="24" rx="4"/><text class="t" x="600" y="254">6 raise floor, .prev, rename, exit</text>
+      <line class="ln-acc" x1="580" y1="288" x2="112" y2="288" marker-end="url(#ah-acc)"/><text class="t-lbl" x="345" y="282" text-anchor="middle">7 agent_running_version = candidate → observed</text>
+      <line class="ln-acc" x1="580" y1="320" x2="112" y2="320" marker-end="url(#ah-acc)"/><text class="t-lbl" x="345" y="314" text-anchor="middle">8 metrics on the same connection ≥ 60 s</text>
+      <line class="ln" x1="110" y1="352" x2="328" y2="352" marker-end="url(#ah)"/><text class="t-lbl" x="220" y="346" text-anchor="middle">9 healthy · stage++</text>
+      <line class="ln-acc" x1="110" y1="386" x2="838" y2="386" marker-end="url(#ah-acc)"/><text class="t-lbl" x="600" y="380" text-anchor="middle">10 stage ≥ 1: next two machines</text>
+      <rect class="box-warn" x="120" y="406" width="310" height="24" rx="4"/><text class="t t-warn" x="130" y="422">✕ 10 min deadline or 3 resends → halt platform</text>
+      <rect class="box-seam" x="120" y="440" width="310" height="24" rx="4"/><text class="t t-seam" x="130" y="456">operator resume → attempt + 1</text>
+    </svg>
+    </div>
+    <figcaption><b>Desired state is a candidate SHA per platform. Actual state is what each agent reports on its live connection.</b> The scheduler is level-triggered: it ticks every 10 s, is woken on registration, and re-evaluates withheld machines on every tick.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><span class="cmp">hub</span> the scheduler loop (<code>hub/server.go:149-167</code>) calls <code>announceVersionToAgent</code> <code>hub/agent_versions.go:259</code>, which calls <code>announceDecision</code> <code>:539</code>. If the machine is ineligible it is recorded as withheld with a reason such as <code>agent_key_not_pinned</code> or <code>agent_arch_not_reported</code>.</li>
+    <li><span class="cmp">hub</span> <code>reserve</code> <code>hub/agent_rollout.go:322</code> takes the slot in one transaction.</li>
+    <li><span class="cmp">hub</span> the pause flag and SHA are re-checked at the send boundary under <code>operatorRolloutMu</code> (<code>agent_versions.go:400-403</code>), and <code>claimSend</code> (<code>:760</code>) prevents a double send.</li>
+    <li><span class="cmp">hub</span> <code>markOffered</code> <code>:499</code>. If the hub crashes between the write and the mark, the slot stays <code>reserved</code> and is settled later, either by the agent's report or by a bounded resend (<code>:380-414</code>).</li>
+    <li><span class="cmp">agent</span> <code>authorizeUpdate</code> <code>agent/update_verify.go:171</code> requires wss/https (plaintext is allowed only on loopback), a valid Ed25519 signature over <code>bloxos-agent-update:v1:&lt;os&gt;:&lt;sha&gt;</code> (<code>proto/updatesigning/signing.go:18</code>) checked against the pinned key, and a readable release floor.</li>
+    <li><span class="cmp">agent</span> <code>performUpdate</code> <code>agent/updater.go:164</code> downloads (250 MB cap), checks the SHA and ELF architecture, and raises the floor <em>before</em> the swap (<code>:212</code>). It then saves <code>.prev</code>, renames the new binary into place, writes the marker and exits. systemd <code>OnFailure</code> restores <code>.prev</code> if the service fails three times within 60 s.</li>
+    <li><span class="cmp">hub</span> <code>observeRunningCandidate</code> <code>:491</code> runs when the agent reports the candidate SHA.</li>
+    <li><span class="cmp">hub</span> <code>noteMetrics</code> <code>:622</code> restarts the dwell after any gap longer than 45 s.</li>
+    <li><span class="cmp">hub</span> <code>tick</code> <code>:790</code> marks the slot healthy, and the stage advances with an atomic <code>UPDATE</code> (<code>:866</code>).</li>
+    <li>Later stages proceed two machines at a time. Any failure calls <code>failSlotTx</code> <code>:541</code> and the platform halts. Operator pause and resume go through <code>/api/versions/pause|resume</code> and require the <code>fleet.admin</code> scope (<code>hub/rbac.go:102-103</code>).</li>
+  </ol>
+</section>
+
+<section id="components">
+  <div class="eyebrow">06</div>
+  <h2>Key components</h2>
+  <p class="lead">The hub is a single Go <code>package main</code>, about 18.7k lines of non-test code with even more test code. A refactor into 11 packages is proposed but only partly done (<code>BLOXOS_FUTURE.md</code>).</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Component</th><th>Responsibility</th><th>Tech</th><th>Key files</th><th>Talks to</th></tr></thead>
+    <tbody>
+      <tr><td>Agent socket</td><td>Auth window, enrollment, frame dispatch, registry ownership</td><td>gorilla/websocket</td><td><code>hub/agentws.go</code></td><td>agents, SQLite, rollout</td></tr>
+      <tr><td>Rollout controller</td><td>Staged, durable, telemetry-gated agent releases</td><td>Go + SQL CAS</td><td><code>hub/agent_rollout.go</code>, <code>agent_versions.go</code>, <code>rollout_pause.go</code>, <code>release_policy.go</code></td><td>agent socket, SQLite</td></tr>
+      <tr><td>Update signing</td><td>Detached, stored or hub-held Ed25519 signatures</td><td>ed25519</td><td><code>hub/update_signing*.go</code>, <code>hub/cmd/bloxos-sign</code>, <code>proto/updatesigning</code></td><td>filesystem</td></tr>
+      <tr><td>HTTP API + SSE</td><td>Routes, commands, bulk, SSE fan-out, API pollers, retention</td><td>Echo v4</td><td><code>hub/main.go</code> (2,966 lines)</td><td>dashboard, agents</td></tr>
+      <tr><td>Auth / RBAC</td><td>JWT login, PIN, rate limits, route→scope map, boot audit</td><td>HS256 JWT, bcrypt</td><td><code>hub/auth.go</code>, <code>hub/rbac.go</code></td><td>users table</td></tr>
+      <tr><td>Alerts</td><td>Threshold rules, incidents, Telegram</td><td>polling loop</td><td><code>hub/alerts.go</code></td><td>metrics table, Telegram, SSE</td></tr>
+      <tr><td>Power history</td><td>Journal ingest, dedupe, gaps, ACK-after-commit</td><td>SQL tx</td><td><code>hub/power_history.go</code>, <code>proto/powerhistory</code></td><td>agents</td></tr>
+      <tr><td>Onboarding</td><td>Tokens, join link, SPKI pin, installers</td><td>bash / PowerShell templates</td><td><code>hub/join.go</code>, <code>hub/install_commands.go</code>, <code>hub/windows_installer.go</code></td><td>new nodes</td></tr>
+      <tr><td>Terminal relay</td><td>PIN-gated PTY relay, metadata audit</td><td>WS pump</td><td><code>hub/terminal.go</code></td><td>browser, agent</td></tr>
+      <tr><td>Host updater</td><td>Upgrades hub and dashboard with backup and rollback</td><td>Python, files as IPC</td><td><code>hub/system_update.go</code>, <code>scripts/updater/</code></td><td>GHCR, Docker</td></tr>
+      <tr><td>Agent core</td><td>Collectors, command plan, credentials</td><td>gopsutil, nvidia-smi, creack/pty</td><td><code>agent/main.go</code>, <code>command_plan.go</code>, <code>credential_handoff.go</code>, <code>hardware*.go</code></td><td>hub, OS</td></tr>
+      <tr><td>Agent updater</td><td>Verify, floor, atomic swap, recovery</td><td>Go, systemd, SCM</td><td><code>agent/updater*.go</code>, <code>update_verify.go</code>, <code>release_floor.go</code></td><td>hub /download</td></tr>
+      <tr><td>Power journal</td><td>Durable local buffer with seq and ACK</td><td>NDJSON segments, fsync</td><td><code>agent/power_journal.go</code>, <code>power_history.go</code></td><td>hub</td></tr>
+      <tr><td>Dashboard</td><td>Pages, contexts, SSE consumer, command palette</td><td>Next.js 16, React 19, cmdk, xterm</td><td><code>dashboard/src/contexts/SSEContext.tsx</code>, <code>components/CommandPalette.tsx</code></td><td>hub via Caddy</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="decisions">
+  <div class="eyebrow">07</div>
+  <h2>Key design decisions</h2>
+  <p class="lead">The project consistently chooses fail-closed, honest-status designs, and it accepts single-node operation as the price.</p>
+  <details><summary>Agents initiate every connection over one WebSocket</summary><dl>
+    <dt>Decision</dt><dd>A single outbound WSS carries telemetry, commands, update announcements, ACKs and terminal setup.</dd>
+    <dt>Alternatives</dt><dd>SSH push from the hub, an inbound agent port, or gRPC.</dd>
+    <dt>Why</dt><dd>Managed machines need no open inbound port, which works through NAT and on LANs (<code>README.md</code>, "How it fits together").</dd>
+    <dt>Source</dt><dd><code>hub/agentws.go:857</code>, <code>agent/main.go:573</code></dd></dl></details>
+  <details><summary>Embedded SQLite, single process, state partly in globals</summary><dl>
+    <dt>Decision</dt><dd>modernc SQLite with WAL and <code>_txlock=immediate</code>. The registry, pending commands and SSE clients live in Go maps.</dd>
+    <dt>Alternatives</dt><dd>Postgres with a stateless hub.</dd>
+    <dt>Why</dt><dd>Zero-dependency self-hosting. HA is an explicit non-goal (<code>BLOXOS_FUTURE.md</code>, "Non-Goals").</dd>
+    <dt>Source</dt><dd><code>hub/database.go:13</code>, <code>hub/main.go:121-143</code></dd></dl></details>
+  <details><summary>Consume the enrollment token only after the node commits the credential</summary><dl>
+    <dt>Decision</dt><dd>Four steps: issue, stage, commit, confirm. A GET never consumes a join code.</dd>
+    <dt>Alternatives</dt><dd>Consume on first use, as most bootstrap tokens do.</dd>
+    <dt>Why</dt><dd>An interrupted install can re-run the same command, and a crash never produces an orphaned credential.</dd>
+    <dt>Source</dt><dd><code>hub/agentws.go:1208,1525,1739</code>, <code>docs/architecture.md</code></dd></dl></details>
+  <details><summary>Linear canary rollout: halt on any failure, and only a human resumes</summary><dl>
+    <dt>Decision</dt><dd>One canary per platform, then flat batches of two. Health means continuous telemetry on the same connection. There is no automatic breaker.</dd>
+    <dt>Alternatives</dt><dd>Percentage waves, an automatic error-budget breaker, or unconditional push.</dd>
+    <dt>Why</dt><dd>Nodes that brick themselves cannot be recovered remotely, so the rollout prefers slow and safe.</dd>
+    <dt>Source</dt><dd><code>hub/agent_rollout.go:37-70</code>, <code>docs/architecture.md</code> "Update Flow"</dd></dl></details>
+  <details><summary>"Withheld" is distinct from "failed"</summary><dl>
+    <dt>Decision</dt><dd>An eligibility refusal (no signature, unpinned key, plaintext transport, arch unknown, floor mismatch) records a reason. It does not use capacity or halt the platform.</dd>
+    <dt>Alternatives</dt><dd>Treat it as a failure, or skip the machine silently.</dd>
+    <dt>Why</dt><dd>It keeps the halt signal about real breakage while still showing operators why a machine is stuck.</dd>
+    <dt>Source</dt><dd><code>hub/agent_rollout.go:84-88</code>, <code>hub/agent_versions.go:539</code></dd></dl></details>
+  <details><summary>Nodes verify releases against a pinned key and enforce a monotonic floor</summary><dl>
+    <dt>Decision</dt><dd>Ed25519 over <code>(os, sha)</code>. The release number is embedded in the signed bytes. The floor is persisted before the swap and never lowered by <code>.prev</code> recovery.</dd>
+    <dt>Alternatives</dt><dd>Trust TLS to the hub, or sign on the hub only.</dd>
+    <dt>Why</dt><dd>A compromised hub cannot push arbitrary or older binaries when signatures are made offline.</dd>
+    <dt>Source</dt><dd><code>agent/update_verify.go:171</code>, <code>agent/release_floor.go:325</code>, <code>hub/update_signing.go:38-47</code></dd></dl></details>
+  <details><summary>Report a command as "accepted, unconfirmed" when completion cannot be observed</summary><dl>
+    <dt>Decision</dt><dd>A command that may sever the socket returns 202 with <code>accepted:true, success:false</code>. Bulk results return accepted, success and error separately for each machine.</dd>
+    <dt>Alternatives</dt><dd>Report optimistic success, or a timeout error.</dd>
+    <dt>Why</dt><dd>A reboot acknowledgement does not prove the machine came back.</dd>
+    <dt>Source</dt><dd><code>hub/command_feedback.go:10-30</code>, <code>hub/main.go:1476</code></dd></dl></details>
+  <details><summary>Telemetry semantics: missing is not zero, and nothing is estimated</summary><dl>
+    <dt>Decision</dt><dd>Power domains stay disjoint and are never summed, with a <code>sources</code> label on each. Lost windows are declared as gaps. Protocol changes are additive only.</dd>
+    <dt>Alternatives</dt><dd>Interpolate, or sum domains.</dd>
+    <dt>Why</dt><dd>An honest reading is worth more than a complete-looking chart. Old agents send old buckets forever.</dd>
+    <dt>Source</dt><dd><code>AGENTS.md</code>, <code>docs/power-history.md</code>, <code>hub/power_history.go:430-490</code></dd></dl></details>
+  <details><summary>The hub never runs host operations itself</summary><dl>
+    <dt>Decision</dt><dd>Upgrades are requested with an O_EXCL request file in an inbox. A root worker stages, backs up, verifies and rolls back, and a maintenance flag gates the API with 503.</dd>
+    <dt>Alternatives</dt><dd>Give the hub the Docker socket or root.</dd>
+    <dt>Why</dt><dd>It keeps the internet-facing process unprivileged.</dd>
+    <dt>Source</dt><dd><code>hub/system_update.go:3-7,201,315,331</code></dd></dl></details>
+</section>
+
+<section id="questions-answered">
+  <div class="eyebrow">08</div>
+  <h2>Answers to the review questions</h2>
+  <p class="lead">Short answers to each question. Where the repo has nothing, the answer is "not addressed".</p>
+  <h3>Domain model &amp; source of truth</h3>
+  <ul class="tight">
+    <li><b>Entities and storage:</b> see <a href="#domain">domain model</a>. Everything is in SQLite (<code>hub/migrations.go</code>). There are no CRDs, no etcd and no DCIM.</li>
+    <li><b>Authoritative vs cached:</b> SQLite is authoritative. Live connection ownership, pending commands, rollout dwell evidence and AI sessions are in memory only (<code>hub/migrations.go:560-565</code>). The release floor and power journal are authoritative on the node.</li>
+    <li><b>Physical vs logical:</b> not separated. There is one row and one JSON blob.</li>
+    <li><b>Discovery and reconciliation:</b> the agent pushes a snapshot on every connect, which overwrites the stored one. There is no reconciliation or drift detection.</li>
+  </ul>
+  <h3>Lifecycle &amp; orchestration</h3>
+  <ul class="tight">
+    <li><b>State machine:</b> none for machines. Rollout slots have one (<a href="#lifecycle">see above</a>), with SQL compare-and-swap guards.</li>
+    <li><b>Style:</b> in-process reconcile loops (rollout every 10 s, alerts every 30 s, API pollers) plus synchronous request/response commands. No workflow engine, queue or event sourcing.</li>
+    <li><b>Long, failure-prone steps:</b> only the agent self-update is treated as one. It has deadlines, bounded resends, extension of deadlines after a hub restart (<code>reconcileAfterRestart</code> <code>hub/agent_rollout.go:221</code>), and <code>.prev</code> recovery on the node. Firmware, OS images and burn-in are not addressed.</li>
+    <li><b>Bulk safety:</b> rollout uses a canary and batches of 2 and halts on failure. Bulk commands allow at most 100 targets with 20 in flight, and have no canary or blast-radius control.</li>
+  </ul>
+  <h3>Provisioning &amp; hardware</h3>
+  <ul class="tight">
+    <li><b>Protocols:</b> host agent plus shell bootstrap. There is no IPMI control, no Redfish, no PXE or DHCP, and no cloud-init. <code>ipmitool</code> is used only for DCMI power readings.</li>
+    <li><b>Push or pull:</b> the agent always initiates the connection, and the hub pushes frames down it. The hub pulls only from Proxmox and Synology APIs.</li>
+    <li><b>Images and firmware:</b> not addressed. The only artifact managed is the agent binary (signed and floored). Hardware drift is not addressed.</li>
+  </ul>
+  <h3>Health, validation &amp; observability</h3>
+  <ul class="tight">
+    <li><b>Signals:</b> <code>nvidia-smi</code> XML for temperature, utilisation, memory, power and fan; RAPL and DCMI for power; gopsutil for the host. No DCGM, Xid, ECC, throttle reasons, NVLink or InfiniBand.</li>
+    <li><b>Signal → state change:</b> not addressed. Alerts notify but never drain or quarantine.</li>
+    <li><b>Burn-in and validation:</b> not addressed. The closest thing is the 60 s telemetry dwell used as a post-update health gate.</li>
+    <li><b>Metrics, logs and traces:</b> <code>log.Printf</code> plus the Echo access log with token redaction (<code>hub/main.go:234-237</code>). No Prometheus endpoint, OpenTelemetry or pprof.</li>
+  </ul>
+  <h3>API, extensibility &amp; access</h3>
+  <ul class="tight">
+    <li><b>API style:</b> REST under <code>/api</code> with no version prefix and no OpenAPI spec, plus SSE and WebSockets. The UI calls <code>fetch</code> directly from about 18 files. There is no fleet CLI; <code>bloxos-update</code> only upgrades the host.</li>
+    <li><b>Plugins:</b> none. The closest analogue is API-machine "adapters", which are a string <code>switch</code> in <code>doPoll</code> (<code>hub/main.go:2776</code>) repeated at about 4 other sites. UI actions are hard-coded (<code>dashboard/src/app/machine/[id]/page.tsx:660-690</code>).</li>
+    <li><b>AuthN/AuthZ:</b> HS256 JWT valid for 24 h with no refresh or revocation (<code>hub/auth.go:286-292</code>). Tokens are also accepted as <code>?token=</code>. RBAC is 3 roles × 14 scopes with a static route map and a boot-time coverage audit. No tenancy, no service accounts, no token passthrough. Audit covers terminal session metadata only.</li>
+    <li><b>MCP / AI agents:</b> not addressed. "AI Sessions" monitors which AI coding tools are running on nodes, through a privacy-minimised contract (<code>proto/aisessions</code>).</li>
+  </ul>
+  <h3>Multi-site &amp; scale</h3>
+  <ul class="tight">
+    <li><b>Topology:</b> one hub; agents connect directly. No site tier.</li>
+    <li><b>Disconnected site:</b> machines go offline after the 90 s idle timeout. Only power history is buffered (24 h, 32 MiB) and replayed. Metrics and commands are not buffered.</li>
+    <li><b>Limits:</b> a single SQLite writer, an alert scan every 30 s over 7 days of metrics, SSE broadcast to every client with 64-deep buffers that drop events, a full snapshot on each SSE connect, and one <code>nvidia-smi</code> fork per node every 30 s. <span class="inf">Inferred: with flat batches of 2 and a ≥ 60 s dwell, a 1,000-node platform takes ≈ 500 stages, roughly 10+ hours per release.</span></li>
+  </ul>
+  <h3>Operability &amp; maturity</h3>
+  <ul class="tight">
+    <li><b>Deploy:</b> Docker Compose (Caddy, hub, dashboard) or native systemd units. Multi-arch images are published to GHCR on <code>v*</code> tags (<code>.github/workflows/docker.yml</code>). Hub upgrades involve downtime and run through the root worker, which backs up and can roll back.</li>
+    <li><b>Dependencies:</b> Caddy only. SQLite is embedded. Nodes need <code>nvidia-smi</code>.</li>
+    <li><b>Maturity:</b> Apache-2.0. In the visible history, 46 of 50 commits are by one author (bokiko) and 4 by Dependabot. Test code outweighs source code in the hub (≈ 25k vs 18.7k lines), and CI runs a race detector. The clone is shallow, so long-run cadence and contributor count are unverified.</li>
+  </ul>
+</section>
+
+<section id="adoption">
+  <div class="eyebrow">09</div>
+  <h2>Adoption cards</h2>
+  <p class="lead">Six ideas are worth taking, and most of them should be re-implemented on Temporal rather than copied. The avoid list is mostly shortcuts that suit a home lab and would fail at our scale.</p>
+
+  <h3>Adopt</h3>
+  <div class="acard" id="c-withheld"><h4>Withheld ≠ failed: typed eligibility refusals <span class="pill v-adopt">Adopt</span></h4>
+    <p><b>How they do it:</b> before touching a node, <code>announceDecision</code> (<code>hub/agent_versions.go:539</code>) returns a machine-readable reason such as <code>agent_key_not_pinned</code>, <code>agent_arch_not_reported</code> or <code>agent_release_below_floor</code>. The slot is recorded as <code>withheld</code>, which uses no capacity and does not halt the rollout. It is re-evaluated on every tick (<code>hub/agent_rollout.go:84-88,517</code>).</p>
+    <p><b>For us:</b> every bulk action (provision, firmware, image) runs a precondition pass that sorts nodes into eligible, withheld (with a reason code), or failed. Only failures count against the blast-radius budget. The portal shows withheld reasons as a queue of work.</p>
+    <div class="row"><span class="pill">lifecycle</span><span class="pill">orchestration</span><span class="pill">S · risk: reason-code sprawl</span><span class="pill">Temporal: a precondition activity before the child workflow fan-out</span></div></div>
+  <div class="acard" id="c-journal"><h4>At-least-once edge telemetry: stream id + seq + ACK after commit <span class="pill v-adopt">Adopt</span></h4>
+    <p><b>How they do it:</b> the agent reserves blocks of 64 sequence numbers durably before using them and fsyncs every record (<code>agent/power_journal.go:409-463</code>). A missing or corrupt state file rotates to a new stream id (<code>:162-178</code>), and losses are declared as gaps. The hub commits under <code>UNIQUE(machine, stream, seq)</code>: an identical payload is a no-op, and a different one is a conflict (<code>hub/power_history.go:376,430-445</code>). The ACK goes out only after commit (<code>:306-315</code>), and the hub reads the machine's identity from the authenticated socket rather than the frame.</p>
+    <p><b>For us:</b> use this as the protocol between site agent and control plane for validation results, burn-in logs and health events, so a site can be disconnected for hours without losing data or double-counting it.</p>
+    <div class="row"><span class="pill">multi-site</span><span class="pill">validation</span><span class="pill">M · risk: disk bounds on the edge</span><span class="pill">Temporal: ingest outside workflows; signal the entity workflow after commit</span></div></div>
+  <div class="acard" id="c-rbacaudit"><h4>Boot-time check that every route has a permission <span class="pill v-adopt">Adopt</span></h4>
+    <p><b>How they do it:</b> a static <code>"METHOD /path" → scope</code> map (<code>hub/rbac.go:85-160</code>). <code>auditRBACRouteCoverage</code> (<code>:276</code>) refuses to start if any <code>/api</code> route is unmapped or any mapping is orphaned, and an unmapped route returns 500 at runtime.</p>
+    <p><b>For us:</b> extend the idea from routes to actions. Every action a plugin registers must declare a permission, an audit class and a risk tier, or the portal and API refuse to load it. Check this in CI, and when a plugin registers. It also covers the gap they left open: their check skips <code>/ws/*</code> (<code>:280</code>).</p>
+    <div class="row"><span class="pill">authz</span><span class="pill">portal</span><span class="pill">S · risk: none material</span><span class="pill">Portal: a plugin manifest lint</span></div></div>
+  <div class="acard" id="c-accepted"><h4>Report accepted, confirmed and unknown as separate outcomes <span class="pill v-adopt">Adopt</span></h4>
+    <p><b>How they do it:</b> commands that can sever the channel return <code>202 accepted</code> with <code>success:false</code> (<code>hub/command_feedback.go:10-30</code>, <code>hub/main.go:1476</code>). Bulk results report accepted, success and error for each machine, and "not sent" is distinguished from "completion unknown" (<code>:597-598</code>).</p>
+    <p><b>For us:</b> every action should return a workflow or run id plus a tri-state outcome in UI, CLI, API and MCP alike. A power cycle through the BMC is "accepted" until the lifecycle workflow sees the node come back.</p>
+    <div class="row"><span class="pill">portal</span><span class="pill">orchestration</span><span class="pill">S · risk: none</span><span class="pill">Temporal: a natural fit with workflow status</span></div></div>
+  <div class="acard" id="c-connevidence"><h4>Health evidence bound to the current connection and the receiver's clock <span class="pill v-adopt">Adopt</span></h4>
+    <p><b>How they do it:</b> dwell evidence is keyed by the live <code>*ConnectedAgent</code>. A reconnect or displacement discards it, time is measured between frames the hub received, and the agent's clock is never used (<code>hub/agent_rollout.go:622-744</code>).</p>
+    <p><b>For us:</b> a validation gate such as "healthy after burn-in" should only count signals from the current boot or session of the node, timestamped by the control plane. That stops stale results from before a reboot from passing the gate.</p>
+    <div class="row"><span class="pill">validation</span><span class="pill">S · risk: need a boot or session id in every signal</span></div></div>
+
+  <h3>Adapt</h3>
+  <div class="acard" id="c-rollout"><h4>Staged, durable, telemetry-gated rollout controller <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> a slot table keyed by <code>(platform, generation, machine)</code> with the states reserved, offered, observed, healthy, failed and withheld. Every transition is a SQL compare-and-swap. The canary stage holds 1, later stages hold 2, a slot is healthy after a 60 s dwell, and one failure halts the platform until an operator resumes. After a restart, deadlines are extended once (<code>hub/agent_rollout.go:37-89,221,322-556,866</code>).</p>
+    <p><b>Change:</b> make it a Temporal "wave" workflow that fans out child workflows per node. Its state lives in workflow history instead of a slot table. Replace the flat batches of 2 with configurable wave sizes and an error budget per failure domain (rack, PDU, fabric leaf). Gate health on DCGM and burn-in results, not just on metrics arriving. Keep the generation idea as the workflow id plus the target artifact digest.</p>
+    <div class="row"><span class="pill">orchestration</span><span class="pill">validation</span><span class="pill">M · risk: slow waves at 10k nodes; a single global resume</span><span class="pill">Temporal: strong fit</span></div></div>
+  <div class="acard" id="c-enroll"><h4>Two-phase enrollment: issue → stage → commit → confirm <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> the hub creates the secret but persists nothing. The agent writes it to <code>.pending</code> and sends <code>enrollment_committed</code>. The hub consumes the token and inserts the credential in one transaction, then confirms with a hash, and the agent promotes the secret durably (<code>hub/agentws.go:1208-1229,1525-1578,1739</code>; <code>agent/credential_handoff.go:152,222</code>). Rotation follows the same pattern with a pending hash and a CAS promote (<code>hub/agentws.go:1804,1895</code>).</p>
+    <p><b>Change:</b> in the racked → provisioning step, bind identity to hardware (chassis serial, TPM EK, BMC-reported serial) rather than to <code>/etc/machine-id</code>. The one-time token should come from the provisioning workflow, not from a human. Keep the "nothing durable until the node commits" rule and the non-consuming GET.</p>
+    <div class="row"><span class="pill">provisioning</span><span class="pill">inventory</span><span class="pill">M · risk: attestation plumbing</span><span class="pill">Temporal: the enrollment is an activity inside the node lifecycle workflow; the commit arrives as a signal</span></div></div>
+  <div class="acard" id="c-floor"><h4>Signed artifacts with a persistent anti-rollback floor on the node <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> Ed25519 over <code>bloxos-agent-update:v1:&lt;os&gt;:&lt;sha&gt;</code>, verified against a pinned key. Signatures can be produced offline, in which case the hub holds no private key. The node raises a <code>release=/sha256=</code> floor with fsync and rename <em>before</em> swapping binaries, and <code>.prev</code> recovery never lowers it (<code>agent/update_verify.go:171</code>, <code>agent/release_floor.go:27-70,325</code>, <code>hub/update_signing.go:390-412</code>).</p>
+    <p><b>Change:</b> apply it to the firmware and OS-image catalog. Each component (BIOS, BMC, NIC, GPU VBIOS, OS image) gets a signed manifest and a monotonic floor per node, stored in inventory and enforced by the provisioning workflow. Use TUF or Sigstore-style roles instead of one key, because they note that a compromised key can still authorise a malicious higher-numbered binary.</p>
+    <div class="row"><span class="pill">provisioning</span><span class="pill">M · risk: vendor firmware that cannot be verified</span></div></div>
+  <div class="acard" id="c-dialhome"><h4>Outbound-only agent channel with single-owner registry <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> one WSS per node. <code>registerAgentConnection</code> closes any socket it displaces (<code>hub/agentws.go:103</code>). A fixed 30 s auth window precedes a 90 s idle deadline (<code>:843,855</code>). Writes are serialised per connection, and every frame re-checks identity binding and registry ownership (<code>:1116,1126</code>).</p>
+    <p><b>Change:</b> put a site gateway in between. Nodes dial the site agent, and the site agent dials the control plane over mTLS gRPC. Registry ownership should use leases in a shared store so the control plane can run more than one replica. Keep the "only the current owner may mutate" check on every message.</p>
+    <div class="row"><span class="pill">multi-site</span><span class="pill">M · risk: session affinity across replicas</span></div></div>
+  <div class="acard" id="c-allowlist"><h4>Typed, allowlisted node actions executed without a shell <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> the agent accepts 9 command types and targets matching <code>^[a-zA-Z0-9._-]+$</code>. It builds a fixed argv with no shell, runs it with a 30 s timeout, and kills the process group (<code>agent/main.go:129-142</code>, <code>agent/command_plan.go:174-236</code>).</p>
+    <p><b>Change:</b> enforce on both sides. Their hub forwards <code>req.Type</code> unchecked (<code>hub/main.go:1445</code>) and any unit name is accepted, so <code>stop sshd</code> is allowed. Our action schema should be declared once and validated in the API, the workflow and the node agent, with target allowlists for each action.</p>
+    <div class="row"><span class="pill">provisioning</span><span class="pill">authz</span><span class="pill">S · risk: none</span></div></div>
+  <div class="acard" id="c-join"><h4>Pinned-SPKI one-line bootstrap with uniform 404s <span class="pill v-adapt">Adapt</span></h4>
+    <p><b>How they do it:</b> at mint time the hub verifies the leaf certificate <code>PUBLIC_URL</code> presents and embeds <code>--pinnedpubkey sha256//…</code> in the command. If it cannot get a trustworthy pin, it refuses to mint. Every unusable code gets the same 404, and codes are redacted from logs (<code>hub/join.go:498-599</code>).</p>
+    <p><b>Change:</b> this matters only for manual or edge onboarding. Our main path will be PXE or Redfish virtual media. Reuse the pin-at-mint idea for the iPXE script and the first-boot trust anchor.</p>
+    <div class="row"><span class="pill">provisioning</span><span class="pill">S · risk: pin breaks on certificate rotation (they hit this: Caddy re-keys every 12 h)</span></div></div>
+
+  <h3>Watch</h3>
+  <div class="acard" id="c-worker"><h4>Unprivileged control plane, privileged host worker, file-based IPC <span class="pill v-watch">Watch</span></h4>
+    <p><b>How they do it:</b> the hub writes an O_EXCL request file into an inbox. A root worker stages, backs up, verifies and accepts or restores, and a maintenance flag file returns 503 for the API (<code>hub/system_update.go:201,315,331-353</code>).</p>
+    <p><b>For us:</b> Kubernetes already covers our own upgrades. The pattern still applies to site appliances that have to update themselves while disconnected.</p>
+    <div class="row"><span class="pill">multi-site</span><span class="pill">S · risk: low relevance</span></div></div>
+  <div class="acard" id="c-aicontract"><h4>A shared contract package with a whitelist that re-sanitises on both sides <span class="pill v-watch">Watch</span></h4>
+    <p><b>How they do it:</b> <code>proto/aisessions</code> is imported by both agent and hub. The hub re-sanitises every frame and takes identity from the socket, ignoring <code>machine_id</code> in the frame (<code>hub/ai_sessions.go</code>). A revisioned config frame gates the feature, and an agent environment variable is a hard opt-out that the hub cannot override.</p>
+    <p><b>For us:</b> useful if we put agents or MCP tooling on customer-facing nodes: an explicit data-minimisation contract plus a local opt-out. Use protobuf and buf instead of a Go package.</p>
+    <div class="row"><span class="pill">authz</span><span class="pill">S · risk: none</span></div></div>
+
+  <h3>Avoid</h3>
+  <div class="acard" id="c-sqlite"><h4>Single-process hub: SQLite plus coordination state in globals <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> one writer (<code>hub/database.go:13</code>). <code>sseClients</code>, <code>pendingCmds</code>, <code>termSessions</code> and <code>machineLatency</code> are package globals (<code>hub/main.go:121-143</code>).</p>
+    <p><b>Why avoid:</b> it rules out HA and more than one replica, and every metrics frame from every node is serialised through one database writer.</p>
+    <div class="row"><span class="pill">multi-site</span><span class="pill">inventory</span><span class="pill">risk: high at our scale</span></div></div>
+  <div class="acard" id="c-status"><h4>Free-text status with no lifecycle or maintenance state <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> <code>machines.status</code> has a default of <code>'offline'</code> and is overwritten by ingest and disconnect (<code>hub/migrations.go:24</code>, <code>hub/main.go:980,1075</code>). Nothing reconciles it on startup.</p>
+    <p><b>Why avoid:</b> connectivity and lifecycle are separate axes. Our node needs a lifecycle state owned by a workflow, and liveness as a separate condition derived from signals.</p>
+    <div class="row"><span class="pill">lifecycle</span><span class="pill">risk: silent wrong state</span></div></div>
+  <div class="acard" id="c-hwjson"><h4>Inventory stored as a JSON blob that is overwritten wholesale <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> <code>ON CONFLICT DO UPDATE SET hardware_info=excluded…</code> (<code>hub/agentws.go:2185-2193</code>), aggregated at read time (<code>hub/inventory.go:183</code>). GPUs are identified by index, not by UUID or serial.</p>
+    <p><b>Why avoid:</b> it loses history, which rules out drift detection and RMA traceability, and a GPU swap looks like no change at all.</p>
+    <div class="row"><span class="pill">inventory</span><span class="pill">risk: RMA and warranty tracking impossible</span></div></div>
+  <div class="acard" id="c-bulk"><h4>Synchronous, in-memory bulk commands <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> at most 100 targets and 20 in flight. The caller waits for <code>wg.Wait()</code>. There is no job id, no persistence and no resume, and cancellation happens only when the client disconnects (<code>hub/main.go:583-758</code>).</p>
+    <p><b>Why avoid:</b> this is exactly what Temporal is for.</p>
+    <div class="row"><span class="pill">orchestration</span><span class="pill">risk: lost work on restart</span></div></div>
+  <div class="acard" id="c-adapter"><h4>Integrations as string switches, UI actions as hard-coded lists <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> <code>doPoll</code> switches on <code>"proxmox"</code> and <code>"synology"</code> (<code>hub/main.go:2776</code>), and adapter names are repeated at 4 validation sites. Machine actions are an inline array in <code>page.tsx:660-690</code>, and palette items are hard-coded.</p>
+    <p><b>Why avoid:</b> it is the opposite of a plugin shell. We need an action registry with a manifest (permission, input schema, workflow binding) that UI, CLI, API and MCP all consume.</p>
+    <div class="row"><span class="pill">portal</span><span class="pill">risk: every team edits core</span></div></div>
+  <div class="acard" id="c-sse"><h4>An unfiltered global event stream <span class="pill v-avoid">Avoid</span></h4>
+    <p><b>How they do it:</b> <code>broadcastSSE</code> sends every event to every client under an RLock, with a 64-slot buffer that drops events (<code>hub/main.go:1089-1100</code>). A full snapshot is sent on each connect, with no filtering per user or scope.</p>
+    <p><b>Why avoid:</b> it breaks tenant and scope isolation, and it costs O(clients × nodes).</p>
+    <div class="row"><span class="pill">portal</span><span class="pill">authz</span><span class="pill">risk: data leak, load</span></div></div>
+</section>
+
+<section id="fit">
+  <div class="eyebrow">10</div>
+  <h2>Fit matrix</h2>
+  <p class="lead">The repo has most to offer on orchestration safety and edge telemetry. On inventory, provisioning protocols, validation and the portal it has almost nothing.</p>
+  <div class="tbl"><table class="matrix">
+    <thead><tr><th>Our area</th><th>Adopt</th><th>Adapt</th><th>Avoid</th><th>Not addressed</th></tr></thead>
+    <tbody>
+      <tr><td><b>Inventory</b></td><td class="na">—</td><td><a href="#c-enroll">two-phase enrollment</a></td><td><a href="#c-hwjson">JSON blob</a> <a href="#c-sqlite">single-writer store</a></td><td class="na">sites, racks, PDU/CDU, fabric, cabling, GPU serials, drift</td></tr>
+      <tr><td><b>Lifecycle</b></td><td><a href="#c-withheld">withheld ≠ failed</a></td><td class="na">—</td><td><a href="#c-status">free-text status</a></td><td class="na">node state machine, maintenance, RMA</td></tr>
+      <tr><td><b>Provisioning</b></td><td class="na">—</td><td><a href="#c-floor">signed + floor</a> <a href="#c-allowlist">typed actions</a> <a href="#c-join">pinned bootstrap</a></td><td class="na">—</td><td class="na">PXE, Redfish, IPMI control, firmware, OS images</td></tr>
+      <tr><td><b>Validation</b></td><td><a href="#c-connevidence">connection-bound evidence</a> <a href="#c-journal">durable results</a></td><td><a href="#c-rollout">telemetry-gated waves</a></td><td class="na">—</td><td class="na">burn-in, DCGM diagnostics, NCCL tests, gating records</td></tr>
+      <tr><td><b>Portal</b></td><td><a href="#c-accepted">tri-state outcomes</a> <a href="#c-rbacaudit">action coverage lint</a></td><td class="na">—</td><td><a href="#c-adapter">hard-coded actions</a> <a href="#c-sse">global SSE</a></td><td class="na">plugins, CLI, MCP</td></tr>
+      <tr><td><b>Orchestration</b></td><td><a href="#c-withheld">eligibility pass</a> <a href="#c-accepted">outcomes</a></td><td><a href="#c-rollout">rollout controller</a></td><td><a href="#c-bulk">sync bulk</a></td><td class="na">workflow engine, compensation</td></tr>
+      <tr><td><b>Authz</b></td><td><a href="#c-rbacaudit">route/action coverage</a></td><td><a href="#c-allowlist">two-sided allowlist</a></td><td><a href="#c-sse">unfiltered stream</a></td><td class="na">audit log, service accounts, tenancy, ReBAC, passthrough</td></tr>
+      <tr><td><b>Multi-site</b></td><td><a href="#c-journal">seq + ACK journal</a></td><td><a href="#c-dialhome">dial-home channel</a></td><td><a href="#c-sqlite">single process</a></td><td class="na">site tier, offline command queue</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="antipatterns">
+  <div class="eyebrow">11</div>
+  <h2>Anti-patterns &amp; limitations</h2>
+  <p class="lead">The serious problems are missing audit, a hub that cannot scale out, and trust placed in the wrong layer. Most of the rest are small-fleet shortcuts.</p>
+  <div class="ap"><span class="pill s-high">high</span><div><h4>Commands and admin changes are not audited</h4><p>Only <code>terminal_sessions</code> records who did something. <code>handleCommand</code> persists neither the actor nor the result, and alerts have no <code>acknowledged_by</code>. The README says a full audit log is not shipped.</p><p class="ev"><code>hub/migrations.go:96-103,117-128</code>, <code>hub/main.go:1408-1489</code></p></div></div>
+  <div class="ap"><span class="pill s-high">high</span><div><h4>The hub is a single process with no HA</h4><p>SQLite has one writer, and coordination state lives in package globals. The refactor that would make HA possible is itself planned work.</p><p class="ev"><code>hub/database.go:13</code>, <code>hub/main.go:121-143</code>, <code>docs/architecture.md</code> "Server struct"</p></div></div>
+  <div class="ap"><span class="pill s-high">high</span><div><h4>The node enforces the command allowlist, and the hub does not</h4><p>The hub forwards any <code>type</code>. On the node, any unit or container name that matches the regex is accepted, so <code>stop_service sshd</code> works, and <code>start_terminal</code> gives a shell to anyone with a PIN.</p><p class="ev"><code>hub/main.go:1445</code>, <code>agent/main.go:129-142</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>GPU telemetry treats GPU 0 as the node</h4><p><code>metrics.gpu_*</code> and the <code>gpu_temp</code> alert read only <code>GPUs[0]</code>. An 8-GPU node overheating on GPU 5 raises no alert. <code>docs/alerts.md</code> does not mention this.</p><p class="ev"><code>hub/main.go:1010-1014</code>, <code>hub/alerts.go:123</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>Machine identity is self-asserted</h4><p>The id is the host ID reported by the node, or its hostname. It is bound to a credential only after enrollment, and a token holder can create a <code>machines</code> row before the commit.</p><p class="ev"><code>agent/main.go:1176</code>, <code>hub/agentws.go:1139,1285-1301</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>Status is not reconciled after a crash</h4><p>Rows stay <code>online</code> after a hub crash until the agent reconnects or the alert rule on <code>last_seen</code> fires.</p><p class="ev"><code>hub/main.go:1075-1076</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>Session tokens are long-lived and leak easily</h4><p>The HS256 JWT is valid for 24 h with no revocation. It is accepted in <code>?token=</code> and stored in localStorage. The setup-token comparison is not constant-time.</p><p class="ev"><code>hub/auth.go:147,286-292,317-362</code>, <code>dashboard/src/lib/session.ts:9-14</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>The alert loop scans all metrics</h4><p>Every 30 s it runs a window function across up to 7 days of <code>metrics</code>. It is polling, not evaluation on ingest.</p><p class="ev"><code>hub/alerts.go:84-132</code></p></div></div>
+  <div class="ap"><span class="pill s-med">med</span><div><h4>Rollout speed does not scale</h4><p>Batches are fixed at 2 and resume applies to every platform at once. <span class="inf">Inferred: ≈ 10 h per 1,000 nodes.</span></p><p class="ev"><code>hub/agent_rollout.go:50-51</code>, <code>hub/agent_versions.go:1058</code></p></div></div>
+  <div class="ap"><span class="pill s-low">low</span><div><h4>The Linux self-update is not crash-durable</h4><p><code>.new</code> is never fsynced, and the swap uses plain <code>os.Rename</code> rather than the repo's own <code>durableRename</code>.</p><p class="ev"><code>agent/updater.go:231,290-301</code></p></div></div>
+  <div class="ap"><span class="pill s-low">low</span><div><h4>Docs and code disagree on recovery and token handling</h4><p>The sample <code>scripts/systemd/bloxos-agent.service</code> lacks the <code>OnFailure</code> recovery that the docs rely on; only the unit generated by the installer has it. The comment in <code>agent/main_linux.go:186-190</code> about the token not persisting contradicts the generated unit.</p><p class="ev"><code>hub/agentws.go:505-513</code></p></div></div>
+  <div class="ap"><span class="pill s-low">low</span><div><h4>API-machine credentials are stored in plaintext</h4><p><code>auth_config</code> is a JSON TEXT column.</p><p class="ev"><code>hub/migrations.go:199-210</code></p></div></div>
+  <div class="ap"><span class="pill s-low">low</span><div><h4>WebSocket routes are outside the RBAC coverage audit</h4><p><code>/ws/terminal</code> does its own token check. The boot audit only looks at <code>/api/*</code>.</p><p class="ev"><code>hub/rbac.go:280</code>, <code>hub/main.go:339</code></p></div></div>
+</section>
+
+<section id="open">
+  <div class="eyebrow">12</div>
+  <h2>Open questions / spike ideas</h2>
+  <p class="lead">Two spikes are worth scheduling: port the rollout controller to Temporal, and prototype the journal protocol through a site gateway. The rest are questions for the maintainers.</p>
+  <ol>
+    <li><b>Spike (≈ 3 days):</b> re-implement <code>agent_rollout.go</code> as a Temporal wave workflow with per-failure-domain error budgets. Compare the slot table's compare-and-swap guarantees with workflow determinism, especially the case where the hub crashes between the socket write and <code>markOffered</code>.</li>
+    <li><b>Spike (≈ 2 days):</b> run the power-journal protocol (stream id, reserved sequence blocks, gap declarations, ACK after commit) through a site gateway with a 6-hour partition, and measure disk use and replay time.</li>
+    <li><b>Maintainers:</b> is HA or Postgres planned at all, or will the 11-package refactor stop at dependency injection?</li>
+    <li><b>Maintainers:</b> why is identity asserted by the node instead of assigned by the hub? What happens when two cloned VMs share <code>/etc/machine-id</code>?</li>
+    <li><b>Maintainers:</b> were larger or adaptive batch sizes considered? What failure rate have real canaries caught?</li>
+    <li><b>Verify:</b> the SSE snapshot cost and broadcast drops at 5k–10k nodes. Load-test <code>getEnrichedMachinesJSON</code> (<code>hub/main.go:1159</code>).</li>
+    <li><b>Verify:</b> the full git history (this clone is shallow) to get real contributor count and release cadence before depending on the project in any way.</li>
+  </ol>
+</section>
+
+<section id="appendix">
+  <div class="eyebrow">13</div>
+  <h2>Appendix</h2>
+  <p class="lead">A small repo. Start with the rollout controller and the enrollment path.</p>
+  <h3>Repo map</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><code>hub/</code></td><td>Go API server, flat <code>package main</code>: routes, WebSockets, rollout, alerts, auth, SQLite migrations</td></tr>
+      <tr><td><code>hub/cmd/bloxos-sign</code></td><td>Offline tool that signs agent releases</td></tr>
+      <tr><td><code>agent/</code></td><td>Go agent for Linux and Windows: collectors, command plan, updater, power journal</td></tr>
+      <tr><td><code>agent/aiscan</code></td><td>Pure classifier for AI coding-tool processes</td></tr>
+      <tr><td><code>proto/</code></td><td>Shared contracts: <code>aisessions</code>, <code>powerhistory</code>, <code>updatesigning</code></td></tr>
+      <tr><td><code>dashboard/</code></td><td>Next.js 16 UI: app routes, contexts, components</td></tr>
+      <tr><td><code>scripts/</code></td><td>Installer, host updater (Python), release and bundle tooling, systemd and Caddy samples</td></tr>
+      <tr><td><code>docker/</code></td><td>Compose stack (Caddy, hub, dashboard) and Caddyfile</td></tr>
+      <tr><td><code>docs/</code></td><td>Architecture, power history, updates, recovery, alerts, configuration</td></tr>
+      <tr><td><code>.github/workflows</code></td><td>CI (race tests, Windows build), multi-arch GHCR release, Dependabot</td></tr>
+      <tr><td><code>BLOXOS_FUTURE.md</code></td><td>Proposed hub refactor into 11 packages, partly superseded</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Files most worth reading</h3>
+  <ul class="tight">
+    <li><code>hub/agent_rollout.go</code>: the durable rollout state machine. The best code in the repo for our purposes.</li>
+    <li><code>hub/agentws.go</code> lines 843–1260 and 1525–1960: auth window, enrollment and credential rotation.</li>
+    <li><code>agent/power_journal.go</code> and <code>hub/power_history.go</code>: at-least-once telemetry with idempotent commit.</li>
+    <li><code>agent/release_floor.go</code> and <code>agent/update_verify.go</code>: node-side verification and anti-rollback.</li>
+    <li><code>hub/rbac.go</code>: route→scope map and boot coverage audit.</li>
+    <li><code>hub/command_feedback.go</code>: accepted vs confirmed semantics.</li>
+    <li><code>docs/architecture.md</code> and <code>docs/power-history.md</code>: accurate prose descriptions of the above.</li>
+  </ul>
+</section>
+</main>
+</div>
+<footer>Reviewed at <code>fcafbb3</code> (2026-09-29). Line references were checked against that commit. Claims marked <span class="inf">inferred</span> were not confirmed in code.</footer>
+</div>
+<script>
+(function(){
+  var root=document.documentElement,btn=document.getElementById('themeBtn');
+  function cur(){var t=root.getAttribute('data-theme');if(t)return t;return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+  function label(){btn.textContent=cur()==='dark'?'Light theme':'Dark theme';}
+  try{var s=localStorage.getItem('bloxos-review-theme');if(s)root.setAttribute('data-theme',s);}catch(e){}
+  label();
+  btn.addEventListener('click',function(){var n=cur()==='dark'?'light':'dark';root.setAttribute('data-theme',n);try{localStorage.setItem('bloxos-review-theme',n);}catch(e){}label();});
+})();
+</script>
+</body>
+</html>
